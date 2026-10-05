@@ -27,7 +27,9 @@ const ZONE_LABEL: Record<ScoreBand["zone"], string> = {
 
 export function ScoreDistribution({ data }: { data: ScoreBand[] }) {
   return (
-    <div>
+    // Растягивается на доступную высоту карточки, чтобы в строке из блоков
+    // разной высоты не оставалось пустого места под графиком.
+    <div className="flex flex-1 flex-col">
       <div className="flex flex-wrap gap-x-5 gap-y-2 pb-3">
         {(Object.keys(ZONE_LABEL) as ScoreBand["zone"][]).map((zone) => (
           <span key={zone} className="flex items-center gap-2 text-xs">
@@ -41,7 +43,7 @@ export function ScoreDistribution({ data }: { data: ScoreBand[] }) {
         ))}
       </div>
 
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height="100%" minHeight={260}>
         <BarChart data={data} margin={{ top: 16, right: 8, left: -24, bottom: 0 }}>
           <XAxis
             dataKey="band"
