@@ -1,0 +1,36 @@
+{
+  "name": "sales-kpi-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "etl": "tsx scripts/etl.ts",
+    "verify": "tsx scripts/verify.ts && tsx scripts/verify_incentive.ts",
+    "dev": "npm run etl && next dev -p 4317",
+    "build": "npm run etl && next build",
+    "start": "next start -p 4317",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.552.0",
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "^3.3.2",
+    "tailwind-merge": "^3.4.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.14",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.1",
+    "typescript": "^5"
+  }
+}
