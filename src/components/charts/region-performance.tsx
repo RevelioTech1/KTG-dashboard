@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import type { RegionPerformance } from "@/lib/queries";
-import { formatPercent, formatScore, pluralRu } from "@/lib/format";
+import { formatPercent, formatScore, labelFormatter, pluralRu } from "@/lib/format";
 import { BONUS_CLIFF_SCORE } from "@/lib/incentive";
 import { Button } from "@/components/ui/button";
 
@@ -106,7 +106,7 @@ export function RegionPerformanceChart({ data }: { data: RegionPerformance[] }) 
               position="right"
               className="fill-foreground"
               fontSize={11}
-              formatter={(v: number) => formatScore(v, 0)}
+              formatter={labelFormatter((v) => formatScore(v, 0))}
             />
             {rows.map((d) => (
               <Cell

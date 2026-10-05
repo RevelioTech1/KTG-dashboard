@@ -9,6 +9,12 @@ import { cn } from "@/lib/utils";
  * на кассе цель — 50% исполнения, у неконтрактных SKU — 70%), поэтому сравнение
  * идёт с собственной целью каждой метрики, а не с общими 100%.
  */
+/**
+ * Порог «цель достигнута» с допуском 0,5%: иначе выполнение 99,9% округлялось бы
+ * в подписи до 100%, но подсвечивалось как недовыполнение.
+ */
+const TARGET_TOLERANCE = 0.995;
+
 export function MetricAchievementBars({ data }: { data: MetricAchievement[] }) {
   const max = Math.max(1, ...data.map((d) => Math.max(d.achieve, d.target)));
 
@@ -16,7 +22,7 @@ export function MetricAchievementBars({ data }: { data: MetricAchievement[] }) {
     <ul className="space-y-3.5">
       {data.map((d) => {
         const ratioToTarget = d.target > 0 ? d.achieve / d.target : 0;
-        const met = ratioToTarget >= 1;
+        const met = ratioToTarget >= TARGET_TOLERANCE;
         const atRisk = !met && ratioToTarget >= 0.9;
         return (
           <li key={d.key}>

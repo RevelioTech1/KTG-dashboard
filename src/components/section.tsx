@@ -12,7 +12,7 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="bg-card rounded-xl border p-5 shadow-xs">
+    <section className="bg-card flex h-full flex-col rounded-xl border p-5 shadow-xs">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold tracking-tight">{title}</h2>
@@ -27,10 +27,17 @@ export function Section({
   );
 }
 
+/**
+ * Вывод для руководителя. Ставится последним в блоке: `mt-auto` прижимает его
+ * к низу карточки, чтобы в строке из блоков разной высоты выводы были на одной
+ * линии, а внешний отступ задаётся padding-ом, чтобы не склеиться с графиком.
+ */
 export function Insight({ children }: { children: ReactNode }) {
   return (
-    <p className="bg-accent/60 text-accent-foreground mt-4 rounded-lg px-3 py-2 text-sm">
-      {children}
-    </p>
+    <div className="mt-auto pt-4">
+      <p className="bg-accent/60 text-accent-foreground rounded-lg px-3 py-2 text-sm">
+        {children}
+      </p>
+    </div>
   );
 }

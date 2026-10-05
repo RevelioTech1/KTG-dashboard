@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import type { ScoreBand } from "@/lib/queries";
-import { formatPercent, pluralRu } from "@/lib/format";
+import { formatPercent, labelFormatter, pluralRu } from "@/lib/format";
 
 const ZONE_COLOR: Record<ScoreBand["zone"], string> = {
   no_bonus: "var(--chart-1)",
@@ -80,7 +80,7 @@ export function ScoreDistribution({ data }: { data: ScoreBand[] }) {
               position="top"
               className="fill-foreground"
               fontSize={11}
-              formatter={(v: number) => (v > 0 ? v : "")}
+              formatter={labelFormatter((v) => (v > 0 ? String(v) : ""))}
             />
             {data.map((d) => (
               <Cell key={d.band} fill={ZONE_COLOR[d.zone]} />

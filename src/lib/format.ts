@@ -36,6 +36,27 @@ export function formatHours(value: number | null | undefined): string {
   return `${numberFormat.format(Math.round(value))} ч`;
 }
 
+/**
+ * Подпись на графике. Повторяет RenderableText из recharts, но объявлена здесь,
+ * чтобы модуль форматирования не зависел от библиотеки графиков и мог
+ * использоваться в серверном коде.
+ */
+type ChartLabel = string | number | boolean | null | undefined;
+
+/**
+ * Значение подписи приводится к числу перед форматированием, нечисловые подписи
+ * скрываются.
+ */
+export function labelFormatter(
+  format: (value: number) => string,
+): (value: ChartLabel) => string {
+  return (value) => {
+    if (typeof value !== "number" && typeof value !== "string") return "";
+    const n = Number(value);
+    return Number.isFinite(n) ? format(n) : "";
+  };
+}
+
 /** Склонение существительного: pluralRu(3, 'сотрудник', 'сотрудника', 'сотрудников'). */
 export function pluralRu(n: number, one: string, few: string, many: string): string {
   const abs = Math.abs(n) % 100;
