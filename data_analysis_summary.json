@@ -1,0 +1,50 @@
+{
+  "EVA_Final_08": {
+    "purpose": "Employee Performance Evaluation & Bonus System",
+    "description": "Tracks KPIs and ratings for sales representatives across Russia",
+    "key_metrics": [
+      "Summary Score",
+      "Call Rate",
+      "Route Coverage",
+      "POSM (Point of Sale Materials) placement",
+      "SKU (Stock Keeping Unit) contract compliance",
+      "Final KPI Score",
+      "Incentive Rate",
+      "Tour Penalty"
+    ],
+    "roles": [
+      "TSM (Territory Sales Manager)",
+      "BDM (Business Development Manager)",
+      "RKAM (Regional Key Account Manager)"
+    ],
+    "geography": "Russian regions and territories",
+    "data_volume": "~187 employee records"
+  },
+  "CA_Sep_26": {
+    "purpose": "Activity Calendar & Planning",
+    "description": "Monthly calendar tracking meetings, weekends, and activity approvals",
+    "key_features": [
+      "Calendar with MM (monthly meetings) and W (weekends) markers",
+      "Approval workflow with BUM (Business Unit Manager) sign-offs",
+      "Territory and position tracking",
+      "Time allocation for activities"
+    ],
+    "data_volume": "~185 records",
+    "reference_data": "Car service types, incidents tracking"
+  },
+  "integration_potential": {
+    "common_dimensions": [
+      "Region",
+      "Territory",
+      "Position/Role (TSM, BDM)",
+      "Time period"
+    ],
+    "analysis_opportunities": [
+      "Correlate activity planning with KPI performance",
+      "Track how calendar utilization affects sales metrics",
+      "Monitor approval workflows and their impact on results",
+      "Regional performance comparison",
+      "Role-based performance analysis"
+    ]
+  }
+}
