@@ -54,44 +54,47 @@ export type PeriodInfo = {
   source_file: string;
 };
 
-export function getPeriods(): PeriodInfo[] {
-  return query<PeriodInfo>(
+export async function getPeriods(): Promise<PeriodInfo[]> {
+  return await query<PeriodInfo>(
     `SELECT period_id, label_ru, days_total, source_file FROM dim_period ORDER BY period_id`,
   );
 }
 
-export function getFilterOptions() {
+export async function getFilterOptions() {
+  const regions = await query<{ value: string }>(
+    `SELECT DISTINCT r.region_name AS value
+     FROM fact_kpi k
+     JOIN dim_territory t ON t.territory_code = k.territory_code
+     JOIN dim_region r ON r.region_id = t.region_id
+     WHERE ${FIELD_STAFF} ORDER BY r.region_name`,
+  );
+  const positions = await query<{ value: string }>(
+    `SELECT DISTINCT t.position AS value
+     FROM fact_kpi k JOIN dim_territory t ON t.territory_code = k.territory_code
+     WHERE ${FIELD_STAFF} ORDER BY t.position`,
+  );
+  const ibms = await query<{ value: string }>(
+    `SELECT DISTINCT i.ibm_name AS value
+     FROM fact_kpi k
+     JOIN dim_territory t ON t.territory_code = k.territory_code
+     JOIN dim_ibm i ON i.ibm_id = t.ibm_id
+     WHERE ${FIELD_STAFF} ORDER BY i.ibm_name`,
+  );
   return {
-    regions: query<{ value: string }>(
-      `SELECT DISTINCT r.region_name AS value
-       FROM fact_kpi k
-       JOIN dim_territory t ON t.territory_code = k.territory_code
-       JOIN dim_region r ON r.region_id = t.region_id
-       WHERE ${FIELD_STAFF} ORDER BY r.region_name`,
-    ).map((r) => r.value),
-    positions: query<{ value: string }>(
-      `SELECT DISTINCT t.position AS value
-       FROM fact_kpi k JOIN dim_territory t ON t.territory_code = k.territory_code
-       WHERE ${FIELD_STAFF} ORDER BY t.position`,
-    ).map((r) => r.value),
-    ibms: query<{ value: string }>(
-      `SELECT DISTINCT i.ibm_name AS value
-       FROM fact_kpi k
-       JOIN dim_territory t ON t.territory_code = k.territory_code
-       JOIN dim_ibm i ON i.ibm_id = t.ibm_id
-       WHERE ${FIELD_STAFF} ORDER BY i.ibm_name`,
-    ).map((r) => r.value),
+    regions: regions.map((r) => r.value),
+    positions: positions.map((r) => r.value),
+    ibms: ibms.map((r) => r.value),
   };
 }
 
-export function getEtlInfo() {
-  return query<{ run_at: string; source_file: string; rows_loaded: number }>(
+export async function getEtlInfo() {
+  return await query<{ run_at: string; source_file: string; rows_loaded: number }>(
     `SELECT run_at, source_file, rows_loaded FROM etl_run ORDER BY source_file`,
   );
 }
 
-export function getDataQuality() {
-  return query<{ severity: string; area: string; message: string }>(
+export async function getDataQuality() {
+  return await query<{ severity: string; area: string; message: string }>(
     `SELECT severity, area, message FROM data_quality_issue
      ORDER BY CASE severity WHEN 'warning' THEN 0 ELSE 1 END, area`,
   );
@@ -113,9 +116,9 @@ export type Headline = {
   with_penalty: number;
 };
 
-export function getHeadline(filters: Filters): Headline {
+export async function getHeadline(filters: Filters): Promise<Headline> {
   const f = buildFilter(filters);
-  const row = queryOne<Headline>(
+  const row = (await queryOne<Headline>(
     `SELECT
        COUNT(*) AS people,
        SUM(k.final_kpi_score IS NOT NULL) AS scored,
@@ -128,13 +131,15 @@ export function getHeadline(filters: Filters): Headline {
      ${FROM_KPI}
      WHERE ${FIELD_STAFF} ${f.clause}`,
     f.params,
-  )!;
+  ))!;
 
-  const scores = query<{ s: number }>(
-    `SELECT k.final_kpi_score AS s ${FROM_KPI}
+  const scores = (
+    await query<{ s: number }>(
+      `SELECT k.final_kpi_score AS s ${FROM_KPI}
      WHERE ${FIELD_STAFF} AND k.final_kpi_score IS NOT NULL ${f.clause}
      ORDER BY k.final_kpi_score`,
-    f.params,
+      f.params,
+    )
   ).map((r) => r.s);
 
   const median =
@@ -170,9 +175,9 @@ const BANDS: { band: string; from: number; to: number; zone: ScoreBand["zone"] }
   { band: "180–200", from: 180, to: 201, zone: "full" },
 ];
 
-export function getScoreBands(filters: Filters): ScoreBand[] {
+export async function getScoreBands(filters: Filters): Promise<ScoreBand[]> {
   const f = buildFilter(filters);
-  const rows = query<{ score: number; rate: number | null }>(
+  const rows = await query<{ score: number; rate: number | null }>(
     `SELECT k.final_kpi_score AS score, k.incentive_rate AS rate ${FROM_KPI}
      WHERE ${FIELD_STAFF} AND k.final_kpi_score IS NOT NULL ${f.clause}`,
     f.params,
@@ -206,9 +211,9 @@ export type CliffCandidate = {
   rate_gain: number;
 };
 
-export function getCliffCandidates(filters: Filters, window = 15): CliffCandidate[] {
+export async function getCliffCandidates(filters: Filters, window = 15): Promise<CliffCandidate[]> {
   const f = buildFilter(filters);
-  const rows = query<{
+  const rows = await query<{
     territory_code: string;
     region_name: string | null;
     position: string;
@@ -253,9 +258,9 @@ export type RegionPerformance = {
   share_above_cliff: number;
 };
 
-export function getRegionPerformance(filters: Filters, minPeople = 2): RegionPerformance[] {
+export async function getRegionPerformance(filters: Filters, minPeople = 2): Promise<RegionPerformance[]> {
   const f = buildFilter(filters);
-  return query<RegionPerformance>(
+  return await query<RegionPerformance>(
     `SELECT r.region_name,
             COUNT(*) AS people,
             AVG(k.final_kpi_score) AS avg_score,
@@ -291,9 +296,9 @@ export type IbmPerformance = {
  * Сводка по команде каждого IBM: только исполнители (is_rollup = 0).
  * Фамилии IBM есть только в EVA; без этого файла разрез недоступен.
  */
-export function getIbmPerformance(filters: Filters): IbmPerformance[] {
+export async function getIbmPerformance(filters: Filters): Promise<IbmPerformance[]> {
   const f = buildFilter(filters);
-  return query<IbmPerformance>(
+  return await query<IbmPerformance>(
     `SELECT i.ibm_name,
             COUNT(*) AS people,
             AVG(k.final_kpi_score) AS avg_score,
@@ -328,9 +333,9 @@ export type MetricAchievement = {
   note?: string;
 };
 
-export function getMetricAchievement(filters: Filters): MetricAchievement[] {
+export async function getMetricAchievement(filters: Filters): Promise<MetricAchievement[]> {
   const f = buildFilter(filters);
-  const row = queryOne<Record<string, number | null>>(
+  const row = (await queryOne<Record<string, number | null>>(
     `SELECT
        AVG(k.call_rate_achieve) AS call_rate,
        AVG(k.coverage_achieve) AS coverage,
@@ -344,7 +349,7 @@ export function getMetricAchievement(filters: Filters): MetricAchievement[] {
      ${FROM_KPI}
      WHERE ${FIELD_STAFF} ${f.clause}`,
     f.params,
-  )!;
+  ))!;
 
   const definitions: { key: string; label: string; target: number; note?: string }[] = [
     { key: "call_rate", label: "Визиты в день (Call rate)", target: 1 },
@@ -364,9 +369,9 @@ export function getMetricAchievement(filters: Filters): MetricAchievement[] {
 }
 
 /** Фактический уровень ошибок в точках: считается из абсолютных значений. */
-export function getErrorRate(filters: Filters) {
+export async function getErrorRate(filters: Filters) {
   const f = buildFilter(filters);
-  return queryOne<{
+  return (await queryOne<{
     covered_pos: number;
     mistakes: number;
     error_rate: number;
@@ -384,7 +389,7 @@ export function getErrorRate(filters: Filters) {
      ${FROM_KPI}
      WHERE ${FIELD_STAFF} AND k.covered_pos > 0 ${f.clause}`,
     f.params,
-  )!;
+  ))!;
 }
 
 // ---------------------------------------------------------------------------
@@ -393,9 +398,9 @@ export function getErrorRate(filters: Filters) {
 
 export type PenaltyBucket = { penalty: number; people: number; rate_lost: number };
 
-export function getPenaltyImpact(filters: Filters) {
+export async function getPenaltyImpact(filters: Filters) {
   const f = buildFilter(filters);
-  const buckets = query<PenaltyBucket>(
+  const buckets = await query<PenaltyBucket>(
     `SELECT ROUND(k.tour_penalty, 2) AS penalty,
             COUNT(*) AS people,
             SUM(k.incentive_rate - k.final_incentive_rate) AS rate_lost
@@ -406,7 +411,7 @@ export function getPenaltyImpact(filters: Filters) {
     f.params,
   );
 
-  const totals = queryOne<{
+  const totals = (await queryOne<{
     rate_before: number;
     rate_after: number;
     people_penalised: number;
@@ -419,7 +424,7 @@ export function getPenaltyImpact(filters: Filters) {
      ${FROM_KPI}
      WHERE ${FIELD_STAFF} AND k.incentive_rate IS NOT NULL ${f.clause}`,
     f.params,
-  )!;
+  ))!;
 
   return { buckets, totals };
 }
@@ -441,13 +446,13 @@ export type TerritoryRow = {
   mandatory_achieve: number | null;
 };
 
-export function getTerritoryRanking(
+export async function getTerritoryRanking(
   filters: Filters,
   direction: "top" | "bottom",
   limit = 10,
-): TerritoryRow[] {
+): Promise<TerritoryRow[]> {
   const f = buildFilter(filters);
-  return query<TerritoryRow>(
+  return await query<TerritoryRow>(
     `SELECT k.territory_code, r.region_name, t.position, i.ibm_name, k.type_kpi,
             k.final_kpi_score, k.incentive_rate, k.tour_penalty, k.final_incentive_rate,
             k.mandatory_achieve
@@ -460,9 +465,9 @@ export function getTerritoryRanking(
 }
 
 /** Точки (территории) конкретного IBM — для детализации команды. */
-export function getIbmTeam(ibmName: string, filters: Filters = {}): TerritoryRow[] {
+export async function getIbmTeam(ibmName: string, filters: Filters = {}): Promise<TerritoryRow[]> {
   const f = buildFilter(filters);
-  return query<TerritoryRow>(
+  return await query<TerritoryRow>(
     `SELECT k.territory_code, r.region_name, t.position, i.ibm_name, k.type_kpi,
             k.final_kpi_score, k.incentive_rate, k.tour_penalty, k.final_incentive_rate,
             k.mandatory_achieve
@@ -487,8 +492,8 @@ export type TimeLossCategory = {
   entries: number;
 };
 
-export function getTimeLoss() {
-  const categories = query<TimeLossCategory>(
+export async function getTimeLoss() {
+  const categories = await query<TimeLossCategory>(
     `SELECT d.category, d.category_ru, SUM(a.hours) AS hours, COUNT(*) AS entries
      FROM fact_activity a
      JOIN dim_activity_type d ON d.activity_code = a.activity_code
@@ -497,7 +502,7 @@ export function getTimeLoss() {
      ORDER BY hours DESC`,
   );
 
-  const byType = query<{ name_ru: string; category_ru: string; hours: number }>(
+  const byType = await query<{ name_ru: string; category_ru: string; hours: number }>(
     `SELECT d.name_ru, d.category_ru, SUM(a.hours) AS hours
      FROM fact_activity a
      JOIN dim_activity_type d ON d.activity_code = a.activity_code
@@ -507,7 +512,7 @@ export function getTimeLoss() {
   );
 
   // Рабочих дней в периоде: все дни минус те, что отмечены как выходные.
-  const capacity = queryOne<{
+  const capacity = (await queryOne<{
     period_label: string;
     days_total: number;
     weekend_days: number;
@@ -521,7 +526,7 @@ export function getTimeLoss() {
             (SELECT COUNT(DISTINCT a.territory_code) FROM fact_activity a) AS roster
      FROM dim_period p
      WHERE p.period_id = (SELECT MAX(period_id) FROM dim_period)`,
-  )!;
+  ))!;
 
   const workingDays = capacity.days_total - capacity.weekend_days;
   const capacityHours = workingDays * HOURS_PER_DAY * capacity.roster;
@@ -540,8 +545,8 @@ export function getTimeLoss() {
 }
 
 /** Территории с наибольшей потерей полевого времени в следующем периоде. */
-export function getTimeLossByTerritory(limit = 10) {
-  return query<{
+export async function getTimeLossByTerritory(limit = 10) {
+  return await query<{
     territory_code: string;
     region_name: string | null;
     position: string;

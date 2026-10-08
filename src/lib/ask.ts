@@ -102,8 +102,8 @@ function aboutManagers(q: string): boolean {
 }
 
 /** Ищет фамилию IBM в вопросе по списку из хранилища. */
-function findIbmName(q: string): string | null {
-  const managers = getIbmPerformance({});
+async function findIbmName(q: string): Promise<string | null> {
+  const managers = await getIbmPerformance({});
   for (const m of managers) {
     const full = m.ibm_name.toLowerCase();
     const parts = full.split(/\s+/);
@@ -163,8 +163,8 @@ function territoryLabel(r: TerritoryRow): string {
   return `${r.territory_code} · ${r.position} · ${region}`;
 }
 
-function answerTopEmployees(limit: number, bottom: boolean): AskAnswer {
-  const rows = getTerritoryRanking({}, bottom ? "bottom" : "top", limit);
+async function answerTopEmployees(limit: number, bottom: boolean): Promise<AskAnswer> {
+  const rows = await getTerritoryRanking({}, bottom ? "bottom" : "top", limit);
   if (rows.length === 0) {
     return {
       intent: bottom ? "bottom_employees" : "top_employees",
@@ -220,8 +220,8 @@ function answerTopEmployees(limit: number, bottom: boolean): AskAnswer {
   };
 }
 
-function answerManagers(limit: number, bottom: boolean): AskAnswer {
-  const all = getIbmPerformance({});
+async function answerManagers(limit: number, bottom: boolean): Promise<AskAnswer> {
+  const all = await getIbmPerformance({});
   const sorted = [...all].sort((a, b) =>
     bottom ? a.avg_score - b.avg_score : b.avg_score - a.avg_score,
   );
@@ -258,9 +258,10 @@ function answerManagers(limit: number, bottom: boolean): AskAnswer {
   };
 }
 
-function answerIbmTeam(ibmName: string): AskAnswer {
-  const summary = getIbmPerformance({}).find((m) => m.ibm_name === ibmName);
-  const team = getIbmTeam(ibmName);
+async function answerIbmTeam(ibmName: string): Promise<AskAnswer> {
+  const managers = await getIbmPerformance({});
+  const summary = managers.find((m) => m.ibm_name === ibmName);
+  const team = await getIbmTeam(ibmName);
 
   if (!summary || team.length === 0) {
     return {
@@ -291,9 +292,9 @@ function answerIbmTeam(ibmName: string): AskAnswer {
   };
 }
 
-function answerTopRegions(limit: number, bottom: boolean): AskAnswer {
+async function answerTopRegions(limit: number, bottom: boolean): Promise<AskAnswer> {
   // Как на дашборде: регионы с одним сотрудником дают неустойчивое среднее.
-  const all = getRegionPerformance({}, 2);
+  const all = await getRegionPerformance({}, 2);
   const sorted = [...all].sort((a, b) =>
     bottom ? a.avg_score - b.avg_score : b.avg_score - a.avg_score,
   );
@@ -336,8 +337,8 @@ function answerTopRegions(limit: number, bottom: boolean): AskAnswer {
   };
 }
 
-function answerHeadline(): AskAnswer {
-  const h = getHeadline({});
+async function answerHeadline(): Promise<AskAnswer> {
+  const h = await getHeadline({});
   const shareAbove = h.scored > 0 ? h.at_or_above_cliff / h.scored : 0;
   const shareNoBonus = h.scored > 0 ? h.below_bonus_threshold / h.scored : 0;
 
@@ -353,9 +354,9 @@ function answerHeadline(): AskAnswer {
   };
 }
 
-function answerNoBonus(): AskAnswer {
-  const h = getHeadline({});
-  const rows = getTerritoryRanking({}, "bottom", 50).filter(
+async function answerNoBonus(): Promise<AskAnswer> {
+  const h = await getHeadline({});
+  const rows = (await getTerritoryRanking({}, "bottom", 50)).filter(
     (r) => r.final_kpi_score < MIN_SCORE_FOR_BONUS,
   );
   const share = h.scored > 0 ? h.below_bonus_threshold / h.scored : 0;
@@ -379,8 +380,8 @@ function answerNoBonus(): AskAnswer {
   };
 }
 
-function answerCliff(): AskAnswer {
-  const cliff = getCliffCandidates({}, 15);
+async function answerCliff(): Promise<AskAnswer> {
+  const cliff = await getCliffCandidates({}, 15);
   if (cliff.length === 0) {
     return {
       intent: "cliff",
@@ -411,8 +412,10 @@ function answerCliff(): AskAnswer {
   };
 }
 
-function answerPenalties(): AskAnswer {
-  const { buckets, totals } = getPenaltyImpact({});
+async function answerPenalties(): Promise<AskAnswer> {
+  const impact = await getPenaltyImpact({});
+  const buckets = impact.buckets;
+  const totals = impact.totals;
   const lost = totals.rate_before - totals.rate_after;
   const share = totals.rate_before > 0 ? lost / totals.rate_before : 0;
   const peopleShare =
@@ -438,9 +441,9 @@ function answerPenalties(): AskAnswer {
   };
 }
 
-function answerMetrics(): AskAnswer {
-  const metrics = getMetricAchievement({});
-  const errors = getErrorRate({});
+async function answerMetrics(): Promise<AskAnswer> {
+  const metrics = await getMetricAchievement({});
+  const errors = await getErrorRate({});
   const weakest = [...metrics].sort(
     (a, b) => a.achieve / a.target - b.achieve / b.target,
   )[0];
@@ -461,9 +464,9 @@ function answerMetrics(): AskAnswer {
   };
 }
 
-function answerTimeLoss(): AskAnswer {
-  const time = getTimeLoss();
-  const byTerritory = getTimeLossByTerritory(5);
+async function answerTimeLoss(): Promise<AskAnswer> {
+  const time = await getTimeLoss();
+  const byTerritory = await getTimeLossByTerritory(5);
   const topTerritories = byTerritory
     .map((t) => `${t.territory_code} (${t.region_name ?? "—"}) — ${formatHours(t.lost_hours)}`)
     .join("; ");
@@ -515,10 +518,10 @@ function answerUnknown(question: string): AskAnswer {
  * Логический ответ без LLM: опирается на зону порога и сводку,
  * когда вопрос не попал в жёсткие правила, но смысл управленческий.
  */
-export function answerLogicalFallback(rawQuestion: string): AskAnswer {
+export async function answerLogicalFallback(rawQuestion: string): Promise<AskAnswer> {
   const q = normalize(rawQuestion);
-  const cliff = answerCliff();
-  const headline = getHeadline({});
+  const cliff = await answerCliff();
+  const headline = await getHeadline({});
 
   if (
     /(^|\s)(кого|кто)\b|дотяг|эффект|выигр|фокус|приоритет|куда смотреть|что делать|рекоменд|посовет/.test(
@@ -558,10 +561,10 @@ function withRulesSource(answer: AskAnswer): AskAnswer {
  * Follow-up без LLM: по кодам территорий из предыдущего ответа ассистента
  * отвечает, у какого IBM сотрудник / показывает карточку территории.
  */
-export function answerFollowUpFromHistory(
+export async function answerFollowUpFromHistory(
   rawQuestion: string,
   history: AskHistoryMessage[],
-): AskAnswer | null {
+): Promise<AskAnswer | null> {
   const q = normalize(rawQuestion);
   const aboutTeamOrIbm =
     /(ibm|команд|руководитель|менеджер|у кого|чей|чья|в какой)/.test(q);
@@ -578,8 +581,8 @@ export function answerFollowUpFromHistory(
   // «этот аутсайдер / лидер» → первая территория из прошлого ответа
   const focusCode = codes[0];
   const all = [
-    ...getTerritoryRanking({}, "bottom", 50),
-    ...getTerritoryRanking({}, "top", 50),
+    ...await getTerritoryRanking({}, "bottom", 50),
+    ...await getTerritoryRanking({}, "top", 50),
   ];
   const person = all.find((r) => r.territory_code === focusCode);
   if (!person) return null;
@@ -597,7 +600,7 @@ export function answerFollowUpFromHistory(
 
   // Если спрашивают про команду — отдаём команду IBM с подсветкой человека
   if (/команд/.test(q)) {
-    const team = answerIbmTeam(ibm);
+    const team = await answerIbmTeam(ibm);
     return withRulesSource({
       ...team,
       intent: "followup_ibm_team",
@@ -625,50 +628,50 @@ export function answerFollowUpFromHistory(
 /**
  * Главная точка входа: разбирает вопрос и возвращает ответ из хранилища.
  */
-export function answerQuestion(rawQuestion: string): AskAnswer {
+export async function answerQuestion(rawQuestion: string): Promise<AskAnswer> {
   const q = normalize(rawQuestion);
-  if (!q || q.length < 2) return withRulesSource(answerHelp());
+  if (!q || q.length < 2) return withRulesSource(await answerHelp());
 
   if (
     /^(помощь|help|что умеешь|что можно|какие вопросы)/.test(q) ||
     q === "?"
   ) {
-    return withRulesSource(answerHelp());
+    return withRulesSource(await answerHelp());
   }
 
   // Штрафы — раньше премий, чтобы «штрафы на премии» не ушли в bonus.
-  if (aboutPenalty(q)) return withRulesSource(answerPenalties());
+  if (aboutPenalty(q)) return withRulesSource(await answerPenalties());
 
   // Порог 100 баллов / зона быстрого выигрыша / «кого дотянуть»
-  if (aboutCliff(q)) return withRulesSource(answerCliff());
+  if (aboutCliff(q)) return withRulesSource(await answerCliff());
 
   // Без премии
-  if (aboutNoBonus(q)) return withRulesSource(answerNoBonus());
+  if (aboutNoBonus(q)) return withRulesSource(await answerNoBonus());
 
   // Потери времени / календарь
-  if (aboutTime(q)) return withRulesSource(answerTimeLoss());
+  if (aboutTime(q)) return withRulesSource(await answerTimeLoss());
 
   // Конкретный менеджер по фамилии из EVA
-  const ibmName = findIbmName(q);
+  const ibmName = await findIbmName(q);
   if (ibmName && (aboutManagers(q) || /команд|точки|территор|у /.test(q))) {
-    return withRulesSource(answerIbmTeam(ibmName));
+    return withRulesSource(await answerIbmTeam(ibmName));
   }
 
   // Сравнение менеджеров IBM
   if (aboutManagers(q) && !aboutRegions(q)) {
     const limit = extractLimit(q, 8);
-    return withRulesSource(answerManagers(limit, isBottom(q)));
+    return withRulesSource(await answerManagers(limit, isBottom(q)));
   }
 
   // Метрики / POSM / SKU / ошибки
   if (aboutMetrics(q) && !aboutKpi(q) && !aboutEmployees(q) && !aboutRegions(q)) {
-    return withRulesSource(answerMetrics());
+    return withRulesSource(await answerMetrics());
   }
 
   // Регионы
   if (aboutRegions(q)) {
     const limit = extractLimit(q, 5);
-    return withRulesSource(answerTopRegions(limit, isBottom(q)));
+    return withRulesSource(await answerTopRegions(limit, isBottom(q)));
   }
 
   // Сотрудники / территории по KPI
@@ -677,25 +680,23 @@ export function answerQuestion(rawQuestion: string): AskAnswer {
     (aboutKpi(q) && (/(топ|лучш|худш|лидер|аутсайд)/.test(q) || isBottom(q)))
   ) {
     const limit = extractLimit(q, /(топ)/.test(q) ? 5 : 1);
-    return withRulesSource(answerTopEmployees(limit, isBottom(q)));
+    return withRulesSource(await answerTopEmployees(limit, isBottom(q)));
   }
 
   // Общая сводка / средние
   if (aboutAverage(q) || (aboutBonus(q) && !/(топ|лучш|худш)/.test(q))) {
-    return withRulesSource(answerHeadline());
+    return withRulesSource(await answerHeadline());
   }
 
   // «Топ-5 по KPI» без явного «сотрудник/регион» — по умолчанию сотрудники
   if (/топ/.test(q) && (aboutKpi(q) || aboutBonus(q) || q.length < 40)) {
     const limit = extractLimit(q, 5);
-    return withRulesSource(answerTopEmployees(limit, isBottom(q)));
+    return withRulesSource(await answerTopEmployees(limit, isBottom(q)));
   }
 
   // «Лучший KPI» без уточнения
   if (/(лучш|худш).*(kpi|кпи|балл)|у кого.*(лучш|больш)/.test(q)) {
-    return withRulesSource(
-      answerTopEmployees(extractLimit(q, 1), isBottom(q)),
-    );
+    return withRulesSource(await answerTopEmployees(extractLimit(q, 1), isBottom(q)));
   }
 
   return answerUnknown(rawQuestion);

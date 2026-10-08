@@ -12,10 +12,17 @@ const questions = [
   "asdf qwerty",
 ];
 
-for (const q of questions) {
-  const a = answerQuestion(q);
-  console.log("\nQ:", q);
-  console.log("intent:", a.intent, "|", a.title);
-  console.log(a.text.slice(0, 180) + (a.text.length > 180 ? "…" : ""));
-  if (a.rows?.length) console.log("rows:", a.rows.length, "cols:", a.columns?.join(", "));
+async function main() {
+  for (const q of questions) {
+    const a = await answerQuestion(q);
+    console.log("\nQ:", q);
+    console.log("intent:", a.intent, "|", a.title);
+    console.log(a.text.slice(0, 180) + (a.text.length > 180 ? "…" : ""));
+    if (a.rows?.length) console.log("rows:", a.rows.length, "cols:", a.columns?.join(", "));
+  }
 }
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

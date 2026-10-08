@@ -17,18 +17,18 @@ import {
 import { BONUS_CLIFF_SCORE, MIN_SCORE_FOR_BONUS, incentiveRateForScore } from "./incentive";
 import { formatPercent, formatScore, formatHours } from "./format";
 
-export function buildAskContext(): string {
-  const periods = getPeriods();
-  const headline = getHeadline({});
-  const managers = getIbmPerformance({});
-  const regions = getRegionPerformance({}, 2).slice(0, 10);
-  const top = getTerritoryRanking({}, "top", 8);
-  const bottom = getTerritoryRanking({}, "bottom", 8);
-  const cliff = getCliffCandidates({}, 15);
-  const metrics = getMetricAchievement({});
-  const penalties = getPenaltyImpact({});
-  const errors = getErrorRate({});
-  const time = getTimeLoss();
+export async function buildAskContext(): Promise<string> {
+  const periods = await getPeriods();
+  const headline = await getHeadline({});
+  const managers = await getIbmPerformance({});
+  const regions = (await getRegionPerformance({}, 2)).slice(0, 10);
+  const top = await getTerritoryRanking({}, "top", 8);
+  const bottom = await getTerritoryRanking({}, "bottom", 8);
+  const cliff = await getCliffCandidates({}, 15);
+  const metrics = await getMetricAchievement({});
+  const penalties = await getPenaltyImpact({});
+  const errors = (await getErrorRate({}))!;
+  const time = await getTimeLoss();
 
   const shareAbove = headline.scored > 0 ? headline.at_or_above_cliff / headline.scored : 0;
   const shareNoBonus =

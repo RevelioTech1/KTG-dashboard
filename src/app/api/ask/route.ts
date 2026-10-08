@@ -19,7 +19,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!warehouseExists()) {
+  if (!(await warehouseExists())) {
     return NextResponse.json(
       { error: "Хранилище данных не собрано. Запустите npm run etl." },
       { status: 503 },
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
         }
       }
 
-      const fromHistory = answerFollowUpFromHistory(question, history);
+      const fromHistory = await answerFollowUpFromHistory(question, history);
       if (fromHistory) {
         return NextResponse.json({
           question: question.trim(),
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const rulesAnswer = answerQuestion(question);
+    const rulesAnswer = await answerQuestion(question);
 
     // Узкие вопросы с таблицами — сразу из SQL.
     if (rulesAnswer.intent !== "unknown" && rulesAnswer.intent !== "help") {
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     if (rulesAnswer.intent === "unknown") {
       return NextResponse.json({
         question: question.trim(),
-        answer: answerLogicalFallback(question),
+        answer: await answerLogicalFallback(question),
         llm: llmStatus,
       });
     }

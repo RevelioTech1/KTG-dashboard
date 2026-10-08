@@ -43,7 +43,7 @@ export async function answerWithLlm(
     /\/$/,
     "",
   );
-  const context = buildAskContext();
+  const context = await buildAskContext();
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: ASK_SYSTEM_PROMPT },

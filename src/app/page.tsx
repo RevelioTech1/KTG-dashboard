@@ -41,7 +41,7 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  if (!warehouseExists()) return <WarehouseMissing />;
+  if (!(await warehouseExists())) return <WarehouseMissing />;
 
   const params = await searchParams;
   const single = (key: string) => {
@@ -54,21 +54,21 @@ export default async function Page({
     ibm: single("ibm"),
   };
 
-  const periods = getPeriods();
-  const options = getFilterOptions();
-  const headline = getHeadline(filters);
-  const bands = getScoreBands(filters);
-  const metrics = getMetricAchievement(filters);
-  const errors = getErrorRate(filters);
-  const regions = getRegionPerformance(filters);
-  const managers = getIbmPerformance(filters);
-  const managerTeams = getTerritoryRanking(filters, "top", 500);
-  const penalties = getPenaltyImpact(filters);
-  const cliff = getCliffCandidates(filters);
-  const top = getTerritoryRanking(filters, "top");
-  const bottom = getTerritoryRanking(filters, "bottom");
-  const timeLoss = getTimeLoss();
-  const quality = getDataQuality();
+  const periods = await getPeriods();
+  const options = await getFilterOptions();
+  const headline = await getHeadline(filters);
+  const bands = await getScoreBands(filters);
+  const metrics = await getMetricAchievement(filters);
+  const errors = (await getErrorRate(filters))!;
+  const regions = await getRegionPerformance(filters);
+  const managers = await getIbmPerformance(filters);
+  const managerTeams = await getTerritoryRanking(filters, "top", 500);
+  const penalties = await getPenaltyImpact(filters);
+  const cliff = await getCliffCandidates(filters);
+  const top = await getTerritoryRanking(filters, "top");
+  const bottom = await getTerritoryRanking(filters, "bottom");
+  const timeLoss = await getTimeLoss();
+  const quality = await getDataQuality();
 
   const factPeriod = periods[0];
   const planPeriod = periods[periods.length - 1];
@@ -163,7 +163,7 @@ export default async function Page({
             />
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-5">
+          <div className="grid items-start gap-6 lg:grid-cols-5">
             <div className="lg:col-span-3">
               <Section
                 title="Распределение по баллам и зонам премирования"
@@ -250,7 +250,7 @@ export default async function Page({
             </div>
           </Section>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid items-start gap-6 lg:grid-cols-2">
             <Section title="Лидеры" description="10 территорий с наибольшим баллом.">
               <RankingTable rows={top} />
             </Section>

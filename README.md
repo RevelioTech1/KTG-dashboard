@@ -32,8 +32,35 @@ fallback по сводке KPI.
 | `npm run dev` | ETL, затем дев-сервер на порту 4317 |
 | `npm run etl` | Пересобрать `data/warehouse.db` из файлов в `uploads/` |
 | `npm run verify` | Сверить хранилище с источником и проверить модель премирования |
-| `npm run build` | ETL и продакшен-сборка |
+| `npm run build` | ETL, вшивка БД и продакшен-сборка Next.js |
+| `npm run preview` | Сборка под Cloudflare Workers и локальный preview |
+| `npm run deploy` | Деплой на Cloudflare Workers (`ktg-dashboard`) |
 | `npm run lint` | ESLint |
+
+## Деплой на Cloudflare Workers
+
+Дашборд собирается через [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare).
+`better-sqlite3` на Workers не работает — чтение KPI идёт через `sql.js`, а
+`warehouse.db` вшивается в бандл (`npm run embed-db`).
+
+```bash
+npm install
+# один раз: вход в Cloudflare
+npx wrangler login
+
+# секреты для нейросети (те же, что в .env.local)
+cp .dev.vars.example .dev.vars
+# отредактируйте .dev.vars, затем:
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put OPENAI_BASE_URL
+npx wrangler secret put OPENAI_MODEL
+
+npm run deploy
+```
+
+После деплоя Wrangler покажет URL вида `https://ktg-dashboard.<account>.workers.dev`.
+
+Локально проверить Workers-рантайм: `npm run preview`.
 
 ## Что показывает дашборд
 
