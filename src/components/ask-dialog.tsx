@@ -64,7 +64,6 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
   const [suggestions, setSuggestions] = useState(DEFAULT_SUGGESTIONS);
   const [llm, setLlm] = useState<LlmStatus | null>(null);
   const [isPending, startTransition] = useTransition();
-  const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -86,7 +85,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [items, isPending]);
 
   function ask(text: string) {
@@ -149,10 +148,14 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
       <DialogTrigger asChild>{trigger ?? defaultTrigger}</DialogTrigger>
 
       <DialogContent
-        className="flex h-[min(720px,85vh)] w-[calc(100%-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        className={cn(
+          // Жёсткий потолок высоты: диалог не растёт вместе с таблицей.
+          "!flex h-[min(720px,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl",
+          "flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl",
+        )}
         showCloseButton
       >
-        <DialogHeader className="bg-popover relative z-20 shrink-0 border-b px-5 py-4 pr-12 text-left">
+        <DialogHeader className="bg-popover shrink-0 border-b px-5 py-4 pr-12 text-left">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="text-primary size-4" />
             Вопросы по данным
@@ -164,9 +167,10 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
           </DialogDescription>
         </DialogHeader>
 
+        {/* basis-0 + min-h-0 — иначе flex-ребёнок раздувается контентом и скролл не появляется */}
         <div
           ref={listRef}
-          className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5"
+          className="min-h-0 flex-1 basis-0 overflow-y-auto overscroll-contain px-5 [-webkit-overflow-scrolling:touch]"
         >
           <div className="flex flex-col gap-4 py-4 pb-6">
             {items.length === 0 ? (
@@ -220,12 +224,10 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
                   : "Считаю по данным хранилища…"}
               </div>
             ) : null}
-
-            <div ref={bottomRef} />
           </div>
         </div>
 
-        <div className="bg-popover relative z-20 shrink-0 border-t px-4 py-3 shadow-[0_-8px_16px_-12px_rgba(0,0,0,0.25)]">
+        <div className="bg-popover shrink-0 border-t px-4 py-3">
           <div className="flex items-end gap-2">
             <Textarea
               ref={inputRef}
@@ -267,7 +269,7 @@ function AnswerBubble({
   return (
     <div className="bg-card max-w-[95%] space-y-3 rounded-2xl rounded-bl-md border px-3.5 py-3 text-sm shadow-xs">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <p className="font-medium">{answer.title}</p>
+        <p className="font-medium break-words">{answer.title}</p>
         {answer.source === "llm" ? (
           <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
             нейросеть
@@ -284,12 +286,12 @@ function AnswerBubble({
       </p>
 
       {answer.columns && answer.rows && answer.rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="max-h-64 overflow-auto rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
                 {answer.columns.map((col) => (
-                  <TableHead key={col} className="h-8 px-2 text-xs">
+                  <TableHead key={col} className="bg-card sticky top-0 z-10 h-8 px-2 text-xs">
                     {col}
                   </TableHead>
                 ))}
