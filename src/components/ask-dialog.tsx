@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -36,6 +35,7 @@ type AskAnswer = {
   rows?: { cells: string[] }[];
   suggestions?: string[];
   intent: string;
+  source?: "rules" | "llm" | "logical";
 };
 
 type ChatItem =
@@ -43,11 +43,18 @@ type ChatItem =
   | { role: "assistant"; answer: AskAnswer }
   | { role: "error"; text: string };
 
+type LlmStatus = {
+  enabled: boolean;
+  provider: string | null;
+  model: string | null;
+  reason?: string;
+};
+
 const DEFAULT_SUGGESTIONS = [
+  "Кого дотянуть до 100 баллов для наибольшего эффекта?",
   "У кого из сотрудников лучший KPI?",
   "Выдай топ-5 регионов по среднему баллу",
-  "Сколько сотрудников без премии?",
-  "Кто ближе всего к порогу 100 баллов?",
+  "Сравни менеджеров IBM по KPI",
 ];
 
 export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
@@ -55,27 +62,31 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
   const [question, setQuestion] = useState("");
   const [items, setItems] = useState<ChatItem[]>([]);
   const [suggestions, setSuggestions] = useState(DEFAULT_SUGGESTIONS);
+  const [llm, setLlm] = useState<LlmStatus | null>(null);
   const [isPending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!open) return;
     fetch("/api/ask")
       .then((r) => r.json())
-      .then((data: { suggestions?: string[] }) => {
+      .then((data: { suggestions?: string[]; llm?: LlmStatus }) => {
         if (data.suggestions?.length) setSuggestions(data.suggestions);
+        if (data.llm) setLlm(data.llm);
       })
       .catch(() => {
         /* оставляем дефолтные подсказки */
       });
-    // Фокус в поле ввода при открытии
     const t = window.setTimeout(() => inputRef.current?.focus(), 50);
     return () => window.clearTimeout(t);
   }, [open]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [items, isPending]);
 
   function ask(text: string) {
@@ -138,21 +149,25 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
       <DialogTrigger asChild>{trigger ?? defaultTrigger}</DialogTrigger>
 
       <DialogContent
-        className="flex max-h-[min(720px,85vh)] w-[calc(100%-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        className="flex h-[min(720px,85vh)] w-[calc(100%-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
         showCloseButton
       >
-        <DialogHeader className="border-b px-5 py-4 text-left">
+        <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12 text-left">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="text-primary size-4" />
             Вопросы по данным
           </DialogTitle>
           <DialogDescription>
-            Ответы строятся из хранилища KPI и календаря — без выдуманных цифр.
-            ФИО в источнике нет, сотрудники указаны по коду территории.
+            {llm?.enabled
+              ? `Ответы через модель ${llm.model ?? "LLM"} по сводке из хранилища. Если цифр нет — логический вывод на основе правил премирования.`
+              : "Ответы из хранилища KPI и календаря. Для свободных вопросов добавьте OPENAI_API_KEY в .env.local — тогда подключится нейросеть."}
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="min-h-0 flex-1 px-5">
+        <div
+          ref={listRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5"
+        >
           <div className="flex flex-col gap-4 py-4">
             {items.length === 0 ? (
               <div className="space-y-3">
@@ -178,7 +193,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
               if (item.role === "user") {
                 return (
                   <div key={index} className="flex justify-end">
-                    <div className="bg-primary text-primary-foreground max-w-[90%] rounded-2xl rounded-br-md px-3.5 py-2 text-sm">
+                    <div className="bg-primary text-primary-foreground max-w-[90%] rounded-2xl rounded-br-md px-3.5 py-2 text-sm break-words">
                       {item.text}
                     </div>
                   </div>
@@ -188,7 +203,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
                 return (
                   <div
                     key={index}
-                    className="border-destructive/30 bg-destructive/5 text-destructive max-w-[95%] rounded-2xl rounded-bl-md border px-3.5 py-2 text-sm"
+                    className="border-destructive/30 bg-destructive/5 text-destructive max-w-[95%] rounded-2xl rounded-bl-md border px-3.5 py-2 text-sm break-words"
                   >
                     {item.text}
                   </div>
@@ -200,22 +215,24 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
             {isPending ? (
               <div className="text-muted-foreground flex items-center gap-2 text-sm">
                 <span className="bg-muted-foreground/40 size-1.5 animate-pulse rounded-full" />
-                Считаю по данным хранилища…
+                {llm?.enabled
+                  ? "Думаю по данным хранилища…"
+                  : "Считаю по данным хранилища…"}
               </div>
             ) : null}
 
             <div ref={bottomRef} />
           </div>
-        </ScrollArea>
+        </div>
 
-        <div className="border-t px-4 py-3">
+        <div className="bg-popover shrink-0 border-t px-4 py-3">
           <div className="flex items-end gap-2">
             <Textarea
               ref={inputRef}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="У кого лучший KPI? Топ-5 регионов…"
+              placeholder="Кого дотянуть для наибольшего эффекта?"
               rows={2}
               className="min-h-[44px] resize-none"
               disabled={isPending}
@@ -232,6 +249,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
           </div>
           <p className="text-muted-foreground mt-1.5 text-[11px]">
             Enter — отправить, Shift+Enter — новая строка
+            {llm?.enabled ? " · нейросеть подключена" : " · режим правил"}
           </p>
         </div>
       </DialogContent>
@@ -248,8 +266,22 @@ function AnswerBubble({
 }) {
   return (
     <div className="bg-card max-w-[95%] space-y-3 rounded-2xl rounded-bl-md border px-3.5 py-3 text-sm shadow-xs">
-      <p className="font-medium">{answer.title}</p>
-      <p className="text-muted-foreground leading-relaxed">{answer.text}</p>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <p className="font-medium">{answer.title}</p>
+        {answer.source === "llm" ? (
+          <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
+            нейросеть
+          </span>
+        ) : null}
+        {answer.source === "logical" ? (
+          <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
+            логический вывод
+          </span>
+        ) : null}
+      </div>
+      <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed break-words">
+        {answer.text}
+      </p>
 
       {answer.columns && answer.rows && answer.rows.length > 0 ? (
         <div className="overflow-x-auto rounded-lg border">

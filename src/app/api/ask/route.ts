@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { warehouseExists } from "@/lib/db";
-import { answerQuestion, getAskSuggestions } from "@/lib/ask";
+import {
+  answerLogicalFallback,
+  answerQuestion,
+  getAskSuggestions,
+} from "@/lib/ask";
+import { answerWithLlm, getLlmStatus } from "@/lib/ask-llm";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ suggestions: getAskSuggestions() });
+  return NextResponse.json({
+    suggestions: getAskSuggestions(),
+    llm: getLlmStatus(),
+  });
 }
 
 export async function POST(request: Request) {
@@ -43,8 +51,44 @@ export async function POST(request: Request) {
   }
 
   try {
-    const answer = answerQuestion(question);
-    return NextResponse.json({ question: question.trim(), answer });
+    const llmStatus = getLlmStatus();
+    const rulesAnswer = answerQuestion(question);
+
+    // Узкие вопросы с таблицами — сразу из SQL.
+    if (rulesAnswer.intent !== "unknown" && rulesAnswer.intent !== "help") {
+      return NextResponse.json({
+        question: question.trim(),
+        answer: rulesAnswer,
+        llm: llmStatus,
+      });
+    }
+
+    // Свободная формулировка — нейросеть с контекстом хранилища.
+    if (llmStatus.enabled) {
+      const llmAnswer = await answerWithLlm(question);
+      if (llmAnswer) {
+        return NextResponse.json({
+          question: question.trim(),
+          answer: { ...llmAnswer, source: "llm" as const },
+          llm: llmStatus,
+        });
+      }
+    }
+
+    // Нет ключа / сбой LLM — логический вывод по сводке и зоне порога.
+    if (rulesAnswer.intent === "unknown") {
+      return NextResponse.json({
+        question: question.trim(),
+        answer: answerLogicalFallback(question),
+        llm: llmStatus,
+      });
+    }
+
+    return NextResponse.json({
+      question: question.trim(),
+      answer: rulesAnswer,
+      llm: llmStatus,
+    });
   } catch (error) {
     console.error("ask failed", error);
     return NextResponse.json(

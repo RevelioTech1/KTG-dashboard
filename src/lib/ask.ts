@@ -44,16 +44,18 @@ export type AskAnswer = {
   suggestions?: string[];
   /** Распознанное намерение — для отладки и тестов */
   intent: string;
+  /** Откуда пришёл ответ */
+  source?: "rules" | "llm" | "logical";
 };
 
 const SUGGESTIONS = [
+  "Кого дотянуть до 100 баллов для наибольшего эффекта?",
   "У кого из сотрудников лучший KPI?",
   "Кто в аутсайдерах по KPI?",
   "Выдай топ-5 регионов по среднему баллу",
   "Сравни менеджеров IBM по KPI",
   "Какая команда у Petr Artemev?",
   "Сколько сотрудников без премии?",
-  "Кто ближе всего к порогу 100 баллов?",
   "Как штрафы влияют на премии?",
 ];
 
@@ -134,7 +136,9 @@ function aboutPenalty(q: string): boolean {
 }
 
 function aboutCliff(q: string): boolean {
-  return /(порог|100 балл|быстр.*выигр|недотяг|близк.*к 100|до 100)/.test(q);
+  return /(порог|100 балл|быстр.*выигр|недотяг|близк.*к 100|до 100|дотянуть|дотянут|наибольш.*эффект|максимальн.*эффект|зон[аы].*выигр|скачок.*ставк)/.test(
+    q,
+  );
 }
 
 function aboutNoBonus(q: string): boolean {
@@ -487,9 +491,54 @@ function answerUnknown(question: string): AskAnswer {
     title: "Не удалось распознать вопрос",
     text:
       `Пока не умею ответить на «${question.trim()}». ` +
-      "Попробуйте одну из подсказок ниже — или переформулируйте через «топ-N», «лучший KPI», «регионы», «штрафы», «премии».",
+      "Попробуйте одну из подсказок ниже — или переформулируйте через «топ-N», «лучший KPI», «регионы», «штрафы», «премии». " +
+      "Для свободных формулировок подключите OPENAI_API_KEY в .env.local.",
+    suggestions: SUGGESTIONS,
+    source: "rules",
+  };
+}
+
+/**
+ * Логический ответ без LLM: опирается на зону порога и сводку,
+ * когда вопрос не попал в жёсткие правила, но смысл управленческий.
+ */
+export function answerLogicalFallback(rawQuestion: string): AskAnswer {
+  const q = normalize(rawQuestion);
+  const cliff = answerCliff();
+  const headline = getHeadline({});
+
+  if (
+    /(кого|кто|дотяг|эффект|выигр|фокус|приоритет|куда смотреть|что делать|рекоменд)/.test(
+      q,
+    )
+  ) {
+    return {
+      ...cliff,
+      intent: "logical_cliff",
+      source: "logical",
+      title: "Кого дотянуть для наибольшего эффекта",
+      text:
+        `Логический вывод по правилам премирования: наибольший эффект даёт доведение сотрудников до ${BONUS_CLIFF_SCORE} баллов — там ставка скачком растёт примерно вдвое.\n\n` +
+        cliff.text,
+    };
+  }
+
+  return {
+    intent: "logical_headline",
+    source: "logical",
+    title: "Логический вывод по доступным данным",
+    text:
+      `В загруженных данных нет прямого ответа на «${rawQuestion.trim()}», но по сводке KPI картина такая.\n\n` +
+      `Средний балл — ${formatScore(headline.avg_score, 1)}, ` +
+      `норму ≥ ${BONUS_CLIFF_SCORE} выполнили ${headline.at_or_above_cliff} из ${headline.scored}, ` +
+      `без премии — ${headline.below_bonus_threshold}. ` +
+      `Практический фокус: зона 85–100 баллов (скачок ставки) и команды IBM с низкой долей ≥ 100.`,
     suggestions: SUGGESTIONS,
   };
+}
+
+function withRulesSource(answer: AskAnswer): AskAnswer {
+  return { ...answer, source: answer.source ?? "rules" };
 }
 
 /**
@@ -497,48 +546,48 @@ function answerUnknown(question: string): AskAnswer {
  */
 export function answerQuestion(rawQuestion: string): AskAnswer {
   const q = normalize(rawQuestion);
-  if (!q || q.length < 2) return answerHelp();
+  if (!q || q.length < 2) return withRulesSource(answerHelp());
 
   if (
     /^(помощь|help|что умеешь|что можно|какие вопросы)/.test(q) ||
     q === "?"
   ) {
-    return answerHelp();
+    return withRulesSource(answerHelp());
   }
 
   // Штрафы — раньше премий, чтобы «штрафы на премии» не ушли в bonus.
-  if (aboutPenalty(q)) return answerPenalties();
+  if (aboutPenalty(q)) return withRulesSource(answerPenalties());
 
-  // Порог 100 баллов / зона быстрого выигрыша
-  if (aboutCliff(q)) return answerCliff();
+  // Порог 100 баллов / зона быстрого выигрыша / «кого дотянуть»
+  if (aboutCliff(q)) return withRulesSource(answerCliff());
 
   // Без премии
-  if (aboutNoBonus(q)) return answerNoBonus();
+  if (aboutNoBonus(q)) return withRulesSource(answerNoBonus());
 
   // Потери времени / календарь
-  if (aboutTime(q)) return answerTimeLoss();
+  if (aboutTime(q)) return withRulesSource(answerTimeLoss());
 
   // Конкретный менеджер по фамилии из EVA
   const ibmName = findIbmName(q);
   if (ibmName && (aboutManagers(q) || /команд|точки|территор|у /.test(q))) {
-    return answerIbmTeam(ibmName);
+    return withRulesSource(answerIbmTeam(ibmName));
   }
 
   // Сравнение менеджеров IBM
   if (aboutManagers(q) && !aboutRegions(q)) {
     const limit = extractLimit(q, 8);
-    return answerManagers(limit, isBottom(q));
+    return withRulesSource(answerManagers(limit, isBottom(q)));
   }
 
   // Метрики / POSM / SKU / ошибки
   if (aboutMetrics(q) && !aboutKpi(q) && !aboutEmployees(q) && !aboutRegions(q)) {
-    return answerMetrics();
+    return withRulesSource(answerMetrics());
   }
 
   // Регионы
   if (aboutRegions(q)) {
     const limit = extractLimit(q, 5);
-    return answerTopRegions(limit, isBottom(q));
+    return withRulesSource(answerTopRegions(limit, isBottom(q)));
   }
 
   // Сотрудники / территории по KPI
@@ -547,24 +596,25 @@ export function answerQuestion(rawQuestion: string): AskAnswer {
     (aboutKpi(q) && (/(топ|лучш|худш|лидер|аутсайд)/.test(q) || isBottom(q)))
   ) {
     const limit = extractLimit(q, /(топ)/.test(q) ? 5 : 1);
-    return answerTopEmployees(limit, isBottom(q));
+    return withRulesSource(answerTopEmployees(limit, isBottom(q)));
   }
 
   // Общая сводка / средние
   if (aboutAverage(q) || (aboutBonus(q) && !/(топ|лучш|худш)/.test(q))) {
-    return answerHeadline();
+    return withRulesSource(answerHeadline());
   }
 
   // «Топ-5 по KPI» без явного «сотрудник/регион» — по умолчанию сотрудники
   if (/топ/.test(q) && (aboutKpi(q) || aboutBonus(q) || q.length < 40)) {
     const limit = extractLimit(q, 5);
-    // Если явно «по регионам» уже обработано выше; иначе сотрудники
-    return answerTopEmployees(limit, isBottom(q));
+    return withRulesSource(answerTopEmployees(limit, isBottom(q)));
   }
 
   // «Лучший KPI» без уточнения
   if (/(лучш|худш).*(kpi|кпи|балл)|у кого.*(лучш|больш)/.test(q)) {
-    return answerTopEmployees(extractLimit(q, 1), isBottom(q));
+    return withRulesSource(
+      answerTopEmployees(extractLimit(q, 1), isBottom(q)),
+    );
   }
 
   return answerUnknown(rawQuestion);
