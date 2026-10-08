@@ -121,14 +121,23 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question: q, history }),
         });
-        const data = (await res.json()) as {
-          answer?: AskAnswer;
-          error?: string;
-        };
+        let data: { answer?: AskAnswer; error?: string } = {};
+        try {
+          data = (await res.json()) as { answer?: AskAnswer; error?: string };
+        } catch {
+          setItems((prev) => [
+            ...prev,
+            {
+              role: "error",
+              text: `Сервер вернул ошибку ${res.status}. Обновите страницу или повторите вопрос.`,
+            },
+          ]);
+          return;
+        }
         if (!res.ok || !data.answer) {
           setItems((prev) => [
             ...prev,
-            { role: "error", text: data.error ?? "Не удалось получить ответ" },
+            { role: "error", text: data.error ?? `Не удалось получить ответ (${res.status})` },
           ]);
           return;
         }
@@ -139,7 +148,10 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
       } catch {
         setItems((prev) => [
           ...prev,
-          { role: "error", text: "Сеть недоступна. Проверьте, что сервер запущен." },
+          {
+            role: "error",
+            text: "Не удалось связаться с API. Обновите страницу и попробуйте снова.",
+          },
         ]);
       }
     });
@@ -188,7 +200,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
           <DialogDescription>
             {llm?.enabled
               ? `Ответы через модель ${llm.model ?? "LLM"} по сводке из хранилища. Если цифр нет — логический вывод на основе правил премирования.`
-              : "Ответы из хранилища KPI и календаря. Для свободных вопросов добавьте OPENAI_API_KEY в .env.local — тогда подключится нейросеть."}
+              : "Ответы из хранилища KPI и календаря. Для нейросети задайте OPENAI_API_KEY в .env.local (локально) или через wrangler secret (Workers)."}
           </DialogDescription>
         </DialogHeader>
 

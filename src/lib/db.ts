@@ -2,13 +2,13 @@
  * Доступ к хранилищу KPI.
  *
  * Локально и на Cloudflare Workers — sql.js (asm.js), без native addons.
- * Файл БД либо читается с диска (Node), либо из warehouse.embedded.ts (Workers).
+ * На каждый запрос создаётся свой Database из закэшированных байтов —
+ * глобальный инстанс в Workers небезопасен при параллельных запросах.
  */
 import fs from "node:fs";
 import path from "node:path";
-// asm.js: без WASM, стабильно в workerd / OpenNext.
 import initSqlJs from "sql.js/dist/sql-asm.js";
-import type { Database, SqlValue } from "sql.js";
+import type { Database, SqlJsStatic, SqlValue } from "sql.js";
 
 const DB_PATH = path.join(process.cwd(), "data", "warehouse.db");
 
@@ -19,11 +19,15 @@ export class WarehouseMissingError extends Error {
   }
 }
 
-let dbPromise: Promise<Database | null> | null = null;
+let sqlModulePromise: Promise<SqlJsStatic> | null = null;
+let dbBytes: Uint8Array | null | undefined;
 
 function loadDbBytes(): Uint8Array | null {
+  if (dbBytes !== undefined) return dbBytes;
+
   if (fs.existsSync(DB_PATH)) {
-    return new Uint8Array(fs.readFileSync(DB_PATH));
+    dbBytes = new Uint8Array(fs.readFileSync(DB_PATH));
+    return dbBytes;
   }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -31,30 +35,38 @@ function loadDbBytes(): Uint8Array | null {
       WAREHOUSE_DB_BASE64?: string;
     };
     if (embedded.WAREHOUSE_DB_BASE64) {
-      return new Uint8Array(Buffer.from(embedded.WAREHOUSE_DB_BASE64, "base64"));
+      dbBytes = new Uint8Array(
+        Buffer.from(embedded.WAREHOUSE_DB_BASE64, "base64"),
+      );
+      return dbBytes;
     }
   } catch {
-    /* модуль ещё не сгенерирован — нормально до npm run embed-db */
+    /* модуль ещё не сгенерирован */
   }
+  dbBytes = null;
   return null;
 }
 
-async function openDb(): Promise<Database | null> {
-  const bytes = loadDbBytes();
-  if (!bytes) return null;
-  const SQL = await initSqlJs();
-  const database = new SQL.Database(bytes);
-  database.run("PRAGMA query_only = ON");
-  return database;
+async function getSql(): Promise<SqlJsStatic> {
+  if (!sqlModulePromise) sqlModulePromise = initSqlJs();
+  return sqlModulePromise;
 }
 
-function getDbPromise(): Promise<Database | null> {
-  if (!dbPromise) dbPromise = openDb();
-  return dbPromise;
+async function withDb<T>(fn: (database: Database) => T): Promise<T> {
+  const bytes = loadDbBytes();
+  if (!bytes) throw new WarehouseMissingError();
+  const SQL = await getSql();
+  const database = new SQL.Database(bytes);
+  try {
+    database.run("PRAGMA query_only = ON");
+    return fn(database);
+  } finally {
+    database.close();
+  }
 }
 
 export async function warehouseExists(): Promise<boolean> {
-  return (await getDbPromise()) !== null;
+  return loadDbBytes() !== null;
 }
 
 function bindParams(params: Record<string, unknown>): Record<string, SqlValue> {
@@ -73,19 +85,18 @@ export async function query<T>(
   sql: string,
   params: Record<string, unknown> = {},
 ): Promise<T[]> {
-  const database = await getDbPromise();
-  if (!database) throw new WarehouseMissingError();
-
-  const stmt = database.prepare(sql);
-  if (Object.keys(params).length > 0) {
-    stmt.bind(bindParams(params));
-  }
-  const rows: Record<string, SqlValue>[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
-  stmt.free();
-  return rows as T[];
+  return withDb((database) => {
+    const stmt = database.prepare(sql);
+    if (Object.keys(params).length > 0) {
+      stmt.bind(bindParams(params));
+    }
+    const rows: Record<string, SqlValue>[] = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return rows as T[];
+  });
 }
 
 export async function queryOne<T>(

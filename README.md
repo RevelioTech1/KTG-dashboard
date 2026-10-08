@@ -58,7 +58,11 @@ npx wrangler secret put OPENAI_MODEL
 npm run deploy
 ```
 
+`npm run deploy` использует `--keep-vars`, чтобы не стереть уже заданные secrets.
 После деплоя Wrangler покажет URL вида `https://ktg-dashboard.<account>.workers.dev`.
+
+Если в диалоге написано, что нейросеть не подключена — secrets не дошли до Worker.
+Проверьте в [Cloudflare Dashboard](https://dash.cloudflare.com) → Workers → `ktg-dashboard` → Settings → Variables and Secrets.
 
 Локально проверить Workers-рантайм: `npm run preview`.
 

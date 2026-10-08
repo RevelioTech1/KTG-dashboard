@@ -1,6 +1,7 @@
 import { ASK_SYSTEM_PROMPT, buildAskContext } from "./ask-context";
 import type { AskAnswer } from "./ask";
 import type { AskHistoryMessage } from "./ask-history";
+import { getRuntimeEnv } from "./runtime-env";
 
 export type LlmStatus = {
   enabled: boolean;
@@ -10,25 +11,26 @@ export type LlmStatus = {
 };
 
 export function getLlmStatus(): LlmStatus {
-  const key = process.env.OPENAI_API_KEY?.trim();
+  const key = getRuntimeEnv("OPENAI_API_KEY");
   if (!key) {
     return {
       enabled: false,
       provider: null,
       model: null,
-      reason: "Не задан OPENAI_API_KEY в .env.local",
+      reason:
+        "Не задан OPENAI_API_KEY (.env.local локально или wrangler secret на Workers)",
     };
   }
+  const baseUrl = getRuntimeEnv("OPENAI_BASE_URL");
   return {
     enabled: true,
-    provider: process.env.OPENAI_BASE_URL?.trim() ? "openai-compatible" : "openai",
-    model: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
+    provider: baseUrl ? "openai-compatible" : "openai",
+    model: getRuntimeEnv("OPENAI_MODEL") || "gpt-4o-mini",
   };
 }
 
 /**
  * Ответ через OpenAI-compatible Chat Completions.
- * Подходит и для OpenAI, и для совместимых провайдеров (OPENAI_BASE_URL).
  * history — предыдущие реплики текущей сессии диалога.
  */
 export async function answerWithLlm(
@@ -38,11 +40,10 @@ export async function answerWithLlm(
   const status = getLlmStatus();
   if (!status.enabled || !status.model) return null;
 
-  const apiKey = process.env.OPENAI_API_KEY!.trim();
-  const baseUrl = (process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(
-    /\/$/,
-    "",
-  );
+  const apiKey = getRuntimeEnv("OPENAI_API_KEY")!;
+  const baseUrl = (
+    getRuntimeEnv("OPENAI_BASE_URL") || "https://api.openai.com/v1"
+  ).replace(/\/$/, "");
   const context = await buildAskContext();
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [

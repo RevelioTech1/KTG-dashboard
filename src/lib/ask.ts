@@ -255,6 +255,11 @@ async function answerManagers(limit: number, bottom: boolean): Promise<AskAnswer
         formatPercent(m.avg_final_rate),
       ],
     })),
+    suggestions: [
+      `В каких регионах работает ${rows[0].ibm_name}?`,
+      `Какая команда у ${rows[0].ibm_name}?`,
+      "Кто в аутсайдерах по KPI?",
+    ],
   };
 }
 
@@ -557,9 +562,20 @@ function withRulesSource(answer: AskAnswer): AskAnswer {
   return { ...answer, source: answer.source ?? "rules" };
 }
 
+/** Имена IBM, упомянутые в тексте прошлого ответа (в порядке появления). */
+async function extractIbmNamesFromContent(content: string): Promise<string[]> {
+  const managers = await getIbmPerformance({});
+  const lower = content.toLowerCase();
+  const found: string[] = [];
+  for (const m of managers) {
+    if (lower.includes(m.ibm_name.toLowerCase())) found.push(m.ibm_name);
+  }
+  return found;
+}
+
 /**
- * Follow-up без LLM: по кодам территорий из предыдущего ответа ассистента
- * отвечает, у какого IBM сотрудник / показывает карточку территории.
+ * Follow-up без LLM: по прошлому ответу находит территорию/IBM
+ * и отвечает про команду, регионы или руководителя.
  */
 export async function answerFollowUpFromHistory(
   rawQuestion: string,
@@ -568,7 +584,9 @@ export async function answerFollowUpFromHistory(
   const q = normalize(rawQuestion);
   const aboutTeamOrIbm =
     /(ibm|команд|руководитель|менеджер|у кого|чей|чья|в какой)/.test(q);
-  if (!aboutTeamOrIbm) return null;
+  const aboutRegionsOfThem = /регион/.test(q);
+
+  if (!aboutTeamOrIbm && !aboutRegionsOfThem) return null;
 
   const lastAssistant = [...history]
     .reverse()
@@ -576,19 +594,52 @@ export async function answerFollowUpFromHistory(
   if (!lastAssistant) return null;
 
   const codes = extractTerritoryCodes(lastAssistant.content);
-  if (codes.length === 0) return null;
+  const ibmNames = await extractIbmNamesFromContent(lastAssistant.content);
 
-  // «этот аутсайдер / лидер» → первая территория из прошлого ответа
-  const focusCode = codes[0];
-  const all = [
-    ...await getTerritoryRanking({}, "bottom", 50),
-    ...await getTerritoryRanking({}, "top", 50),
-  ];
-  const person = all.find((r) => r.territory_code === focusCode);
-  if (!person) return null;
+  let ibm: string | null = null;
+  let person: TerritoryRow | null = null;
 
-  const ibm = person.ibm_name;
-  if (!ibm) {
+  if (codes.length > 0) {
+    const all = [
+      ...(await getTerritoryRanking({}, "bottom", 50)),
+      ...(await getTerritoryRanking({}, "top", 50)),
+    ];
+    person = all.find((r) => r.territory_code === codes[0]) ?? null;
+    ibm = person?.ibm_name ?? null;
+  }
+  if (!ibm && ibmNames.length > 0) {
+    // В рейтинге менеджеров первая фамилия — лидер прошлого ответа
+    ibm = ibmNames[0];
+  }
+  if (!ibm) return null;
+
+  // «а в каких регионах он работает?»
+  if (aboutRegionsOfThem) {
+    const team = await getIbmTeam(ibm);
+    const regionCounts = new Map<string, number>();
+    for (const row of team) {
+      const name = row.region_name ?? "без региона";
+      regionCounts.set(name, (regionCounts.get(name) ?? 0) + 1);
+    }
+    const regions = [...regionCounts.entries()].sort((a, b) => b[1] - a[1]);
+    return withRulesSource({
+      intent: "followup_ibm_regions",
+      title: `Регионы команды ${ibm}`,
+      text:
+        person
+          ? `Территория ${person.territory_code} относится к IBM ${ibm}. Ниже — регионы всей команды.`
+          : `Регионы, где работает команда IBM ${ibm} (${team.length} ${pluralRu(team.length, "исполнитель", "исполнителя", "исполнителей")}).`,
+      columns: ["Регион", "Сотрудников"],
+      rows: regions.map(([name, n]) => ({ cells: [name, String(n)] })),
+      suggestions: [
+        `Какая команда у ${ibm}?`,
+        "Сравни менеджеров IBM по KPI",
+        "Кто в аутсайдерах по KPI?",
+      ],
+    });
+  }
+
+  if (person && !person.ibm_name) {
     return withRulesSource({
       intent: "followup_territory",
       title: `Территория ${person.territory_code}`,
@@ -598,29 +649,30 @@ export async function answerFollowUpFromHistory(
     });
   }
 
-  // Если спрашивают про команду — отдаём команду IBM с подсветкой человека
   if (/команд/.test(q)) {
     const team = await answerIbmTeam(ibm);
     return withRulesSource({
       ...team,
       intent: "followup_ibm_team",
       title: `Команда IBM ${ibm}`,
-      text:
-        `Территория ${person.territory_code} (${person.region_name ?? "—"}, балл ${formatScore(person.final_kpi_score)}) ` +
-        `относится к IBM ${ibm}.\n\n${team.text}`,
+      text: person
+        ? `Территория ${person.territory_code} (${person.region_name ?? "—"}, балл ${formatScore(person.final_kpi_score)}) ` +
+          `относится к IBM ${ibm}.\n\n${team.text}`
+        : team.text,
     });
   }
 
   return withRulesSource({
     intent: "followup_ibm",
-    title: `IBM для ${person.territory_code}`,
-    text:
-      `Территория ${territoryLabel(person)} (балл ${formatScore(person.final_kpi_score)}) ` +
-      `входит в команду IBM ${ibm}.`,
+    title: person ? `IBM для ${person.territory_code}` : `IBM ${ibm}`,
+    text: person
+      ? `Территория ${territoryLabel(person)} (балл ${formatScore(person.final_kpi_score)}) ` +
+        `входит в команду IBM ${ibm}.`
+      : `В прошлом ответе речь шла о менеджере ${ibm}.`,
     suggestions: [
       `Какая команда у ${ibm}?`,
+      `В каких регионах работает ${ibm}?`,
       "Кто в аутсайдерах по KPI?",
-      "Сравни менеджеров IBM по KPI",
     ],
   });
 }
