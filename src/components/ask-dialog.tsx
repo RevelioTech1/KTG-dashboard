@@ -169,9 +169,15 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
       <DialogContent
         className={cn(
           // Жёсткий потолок высоты: диалог не растёт вместе с таблицей.
-          "!flex h-[min(720px,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl",
-          "flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl",
+          "!flex w-[calc(100%-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl",
         )}
+        style={{
+          height: "min(720px, calc(100dvh - 2rem))",
+          maxHeight: "calc(100dvh - 2rem)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
         showCloseButton
       >
         <DialogHeader className="bg-popover shrink-0 border-b px-5 py-4 pr-12 text-left">
@@ -189,7 +195,8 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
         {/* basis-0 + min-h-0 — иначе flex-ребёнок раздувается контентом и скролл не появляется */}
         <div
           ref={listRef}
-          className="min-h-0 flex-1 basis-0 overflow-y-auto overscroll-contain px-5 [-webkit-overflow-scrolling:touch]"
+          className="overscroll-contain px-5 [-webkit-overflow-scrolling:touch]"
+          style={{ flex: "1 1 0%", minHeight: 0, overflowY: "auto" }}
         >
           <div className="flex flex-col gap-4 py-4 pb-6">
             {items.length === 0 ? (
@@ -246,7 +253,10 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
           </div>
         </div>
 
-        <div className="bg-popover shrink-0 border-t px-4 py-3">
+        <div
+          className="bg-popover border-t px-4 py-3"
+          style={{ flexShrink: 0 }}
+        >
           <div className="flex items-end gap-2">
             <Textarea
               ref={inputRef}
