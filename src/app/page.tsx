@@ -262,7 +262,7 @@ export default async function Page({
             </Section>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-5">
+          <div className="grid items-start gap-6 lg:grid-cols-5">
             <div className="lg:col-span-3">
               <Section
                 title={`Потери полевого времени — план на ${timeLoss.periodLabel.toLowerCase()}`}
