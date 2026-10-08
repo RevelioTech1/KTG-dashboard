@@ -4,7 +4,6 @@ import { KpiCard } from "@/components/kpi-card";
 import { Section, Insight } from "@/components/section";
 import { DashboardFilters } from "@/components/dashboard-filters";
 import { ScoreDistribution } from "@/components/charts/score-distribution";
-import { RegionPerformanceChart } from "@/components/charts/region-performance";
 import { MetricAchievementBars } from "@/components/charts/metric-achievement";
 import { PenaltyImpactChart } from "@/components/charts/penalty-impact";
 import { TimeLossChart } from "@/components/charts/time-loss";
@@ -12,6 +11,8 @@ import { RankingTable } from "@/components/ranking-table";
 import { CliffTable } from "@/components/cliff-table";
 import { DataQualityList } from "@/components/data-quality";
 import { WarehouseMissing } from "@/components/warehouse-missing";
+import { AskDialog } from "@/components/ask-dialog";
+import { GeoManagerPanel } from "@/components/geo-manager-panel";
 
 import { warehouseExists } from "@/lib/db";
 import {
@@ -23,6 +24,7 @@ import {
   getMetricAchievement,
   getPenaltyImpact,
   getPeriods,
+  getIbmPerformance,
   getRegionPerformance,
   getScoreBands,
   getTerritoryRanking,
@@ -59,6 +61,8 @@ export default async function Page({
   const metrics = getMetricAchievement(filters);
   const errors = getErrorRate(filters);
   const regions = getRegionPerformance(filters);
+  const managers = getIbmPerformance(filters);
+  const managerTeams = getTerritoryRanking(filters, "top", 500);
   const penalties = getPenaltyImpact(filters);
   const cliff = getCliffCandidates(filters);
   const top = getTerritoryRanking(filters, "top");
@@ -208,18 +212,22 @@ export default async function Page({
             ) : null}
           </Section>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Section
-              title="Регионы по среднему баллу"
-              description="Включены регионы, где работает не меньше двух сотрудников, иначе средние неустойчивы."
-            >
-              <RegionPerformanceChart data={regions} />
-            </Section>
+          <Section
+            title="Сравнение по географии и менеджерам"
+            description="Переключатель не затирает данные: регионы — срез по городам (от 2 сотрудников), менеджеры IBM — команды по фамилиям из EVA со списком точек."
+          >
+            <GeoManagerPanel
+              regions={regions}
+              managers={managers}
+              teams={managerTeams}
+            />
+          </Section>
 
-            <Section
-              title="Штрафы по контрольным турам"
-              description="Штраф срезает уже начисленную премию: итоговая ставка = базовая × (1 − штраф)."
-            >
+          <Section
+            title="Штрафы по контрольным турам"
+            description="Штраф срезает уже начисленную премию: итоговая ставка = базовая × (1 − штраф)."
+          >
+            <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
               <PenaltyImpactChart data={penalties.buckets} />
               <Insight>
                 Штраф получили <strong>{headline.with_penalty}</strong> из {headline.scored}{" "}
@@ -228,8 +236,8 @@ export default async function Page({
                 команды. Удержания съедают {formatPercent(penaltyShareOfFund, 0)} бюджета
                 премий, то есть это системная проблема процесса, а не отдельные нарушения.
               </Insight>
-            </Section>
-          </div>
+            </div>
+          </Section>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Section title="Лидеры" description="10 территорий с наибольшим баллом.">
@@ -318,6 +326,8 @@ export default async function Page({
         </span>
         {hasFilters ? <span>Фильтры применены к блокам по KPI и премиям</span> : null}
       </footer>
+
+      <AskDialog />
     </div>
   );
 }

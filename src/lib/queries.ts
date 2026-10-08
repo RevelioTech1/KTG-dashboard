@@ -273,6 +273,50 @@ export function getRegionPerformance(filters: Filters, minPeople = 2): RegionPer
 }
 
 // ---------------------------------------------------------------------------
+// Менеджеры IBM (фамилии из столбца A файла EVA)
+// ---------------------------------------------------------------------------
+
+export type IbmPerformance = {
+  ibm_name: string;
+  people: number;
+  avg_score: number;
+  avg_final_rate: number;
+  share_above_cliff: number;
+  below_bonus: number;
+  with_penalty: number;
+  territory_count: number;
+};
+
+/**
+ * Сводка по команде каждого IBM: только исполнители (is_rollup = 0).
+ * Фамилии IBM есть только в EVA; без этого файла разрез недоступен.
+ */
+export function getIbmPerformance(filters: Filters): IbmPerformance[] {
+  const f = buildFilter(filters);
+  return query<IbmPerformance>(
+    `SELECT i.ibm_name,
+            COUNT(*) AS people,
+            AVG(k.final_kpi_score) AS avg_score,
+            AVG(k.final_incentive_rate) AS avg_final_rate,
+            AVG(CASE WHEN k.final_kpi_score >= ${BONUS_CLIFF_SCORE} THEN 1.0 ELSE 0.0 END)
+              AS share_above_cliff,
+            SUM(CASE WHEN k.final_kpi_score < ${MIN_SCORE_FOR_BONUS} THEN 1 ELSE 0 END)
+              AS below_bonus,
+            SUM(CASE WHEN COALESCE(k.tour_penalty, 0) > 0 THEN 1 ELSE 0 END)
+              AS with_penalty,
+            COUNT(DISTINCT t.territory_code) AS territory_count
+     ${FROM_KPI}
+     WHERE ${FIELD_STAFF}
+       AND k.final_kpi_score IS NOT NULL
+       AND i.ibm_name IS NOT NULL
+       ${f.clause}
+     GROUP BY i.ibm_name
+     ORDER BY avg_score DESC`,
+    f.params,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Выполнение отдельных метрик
 // ---------------------------------------------------------------------------
 
@@ -412,6 +456,23 @@ export function getTerritoryRanking(
      ORDER BY k.final_kpi_score ${direction === "top" ? "DESC" : "ASC"}, k.territory_code
      LIMIT @limit`,
     { ...f.params, limit },
+  );
+}
+
+/** Точки (территории) конкретного IBM — для детализации команды. */
+export function getIbmTeam(ibmName: string, filters: Filters = {}): TerritoryRow[] {
+  const f = buildFilter(filters);
+  return query<TerritoryRow>(
+    `SELECT k.territory_code, r.region_name, t.position, i.ibm_name, k.type_kpi,
+            k.final_kpi_score, k.incentive_rate, k.tour_penalty, k.final_incentive_rate,
+            k.mandatory_achieve
+     ${FROM_KPI}
+     WHERE ${FIELD_STAFF}
+       AND k.final_kpi_score IS NOT NULL
+       AND i.ibm_name = @ibmName
+       ${f.clause}
+     ORDER BY k.final_kpi_score DESC, k.territory_code`,
+    { ...f.params, ibmName },
   );
 }
 
