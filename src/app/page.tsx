@@ -1,4 +1,4 @@
-import { Database, FileSpreadsheet } from "lucide-react";
+import { Database, FileSpreadsheet, MessageCircleQuestion } from "lucide-react";
 
 import { KpiCard } from "@/components/kpi-card";
 import { Section, Insight } from "@/components/section";
@@ -104,6 +104,17 @@ export default async function Page({
 
         <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
           <DashboardFilters options={options} />
+          <AskDialog
+            trigger={
+              <button
+                type="button"
+                className="bg-primary text-primary-foreground inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium shadow-xs"
+              >
+                <MessageCircleQuestion className="size-4" />
+                Спросить данные
+              </button>
+            }
+          />
           <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
             <FileSpreadsheet className="size-3.5" />
             {periods.map((p) => p.source_file).join(" · ")}

@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { MessageCircleQuestion, Send, Sparkles } from "lucide-react";
 import {
   Dialog,
@@ -44,7 +50,7 @@ const DEFAULT_SUGGESTIONS = [
   "Кто ближе всего к порогу 100 баллов?",
 ];
 
-export function AskDialog() {
+export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [items, setItems] = useState<ChatItem[]>([]);
@@ -117,18 +123,19 @@ export function AskDialog() {
     }
   }
 
+  const defaultTrigger = (
+    <Button
+      size="lg"
+      className="fixed right-4 bottom-4 z-50 h-12 gap-2 rounded-full px-5 shadow-lg sm:right-6 sm:bottom-6"
+    >
+      <MessageCircleQuestion className="size-5" />
+      Спросить данные
+    </Button>
+  );
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          size="lg"
-          className="fixed right-4 bottom-4 z-50 h-12 gap-2 rounded-full px-5 shadow-lg sm:right-6 sm:bottom-6"
-        >
-          <MessageCircleQuestion className="size-5" />
-          <span className="hidden sm:inline">Спросить данные</span>
-          <span className="sm:hidden">Спросить</span>
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger asChild>{trigger ?? defaultTrigger}</DialogTrigger>
 
       <DialogContent
         className="flex max-h-[min(720px,85vh)] w-[calc(100%-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
