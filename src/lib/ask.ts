@@ -27,6 +27,7 @@ import {
   formatScore,
   pluralRu,
 } from "./format";
+import { extractTerritoryCodes, type AskHistoryMessage } from "./ask-history";
 
 export type AskRow = {
   cells: string[];
@@ -193,17 +194,29 @@ function answerTopEmployees(limit: number, bottom: boolean): AskAnswer {
   return {
     intent: bottom ? "bottom_employees" : "top_employees",
     title,
-    text: `${lead} ФИО в источнике недоступны (#REF!), поэтому идентификация идёт по коду территории.`,
-    columns: ["Территория", "Регион", "Должность", "Балл", "Ставка"],
+    text: `${lead} ФИО в источнике недоступны (#REF!), поэтому идентификация идёт по коду территории. IBM указан в таблице.`,
+    columns: ["Территория", "Регион", "Должность", "IBM", "Балл", "Ставка"],
     rows: rows.map((r) => ({
       cells: [
         r.territory_code,
         r.region_name ?? "—",
         r.position,
+        r.ibm_name ?? "—",
         formatScore(r.final_kpi_score),
         formatPercent(r.final_incentive_rate),
       ],
     })),
+    suggestions: bottom
+      ? [
+          "У какого IBM этот аутсайдер?",
+          "Сравни менеджеров IBM по KPI",
+          "Кого дотянуть до 100 баллов для наибольшего эффекта?",
+        ]
+      : [
+          "У какого IBM этот лидер?",
+          "Кто в аутсайдерах по KPI?",
+          "Выдай топ-5 регионов по среднему баллу",
+        ],
   };
 }
 
@@ -539,6 +552,74 @@ export function answerLogicalFallback(rawQuestion: string): AskAnswer {
 
 function withRulesSource(answer: AskAnswer): AskAnswer {
   return { ...answer, source: answer.source ?? "rules" };
+}
+
+/**
+ * Follow-up без LLM: по кодам территорий из предыдущего ответа ассистента
+ * отвечает, у какого IBM сотрудник / показывает карточку территории.
+ */
+export function answerFollowUpFromHistory(
+  rawQuestion: string,
+  history: AskHistoryMessage[],
+): AskAnswer | null {
+  const q = normalize(rawQuestion);
+  const aboutTeamOrIbm =
+    /(ibm|команд|руководитель|менеджер|у кого|чей|чья|в какой)/.test(q);
+  if (!aboutTeamOrIbm) return null;
+
+  const lastAssistant = [...history]
+    .reverse()
+    .find((m) => m.role === "assistant");
+  if (!lastAssistant) return null;
+
+  const codes = extractTerritoryCodes(lastAssistant.content);
+  if (codes.length === 0) return null;
+
+  // «этот аутсайдер / лидер» → первая территория из прошлого ответа
+  const focusCode = codes[0];
+  const all = [
+    ...getTerritoryRanking({}, "bottom", 50),
+    ...getTerritoryRanking({}, "top", 50),
+  ];
+  const person = all.find((r) => r.territory_code === focusCode);
+  if (!person) return null;
+
+  const ibm = person.ibm_name;
+  if (!ibm) {
+    return withRulesSource({
+      intent: "followup_territory",
+      title: `Территория ${person.territory_code}`,
+      text:
+        `В прошлом ответе речь шла о ${territoryLabel(person)} ` +
+        `(балл ${formatScore(person.final_kpi_score)}). IBM в источнике для этой точки не указан.`,
+    });
+  }
+
+  // Если спрашивают про команду — отдаём команду IBM с подсветкой человека
+  if (/команд/.test(q)) {
+    const team = answerIbmTeam(ibm);
+    return withRulesSource({
+      ...team,
+      intent: "followup_ibm_team",
+      title: `Команда IBM ${ibm}`,
+      text:
+        `Территория ${person.territory_code} (${person.region_name ?? "—"}, балл ${formatScore(person.final_kpi_score)}) ` +
+        `относится к IBM ${ibm}.\n\n${team.text}`,
+    });
+  }
+
+  return withRulesSource({
+    intent: "followup_ibm",
+    title: `IBM для ${person.territory_code}`,
+    text:
+      `Территория ${territoryLabel(person)} (балл ${formatScore(person.final_kpi_score)}) ` +
+      `входит в команду IBM ${ibm}.`,
+    suggestions: [
+      `Какая команда у ${ibm}?`,
+      "Кто в аутсайдерах по KPI?",
+      "Сравни менеджеров IBM по KPI",
+    ],
+  });
 }
 
 /**

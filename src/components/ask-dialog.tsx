@@ -27,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { compactAnswerForHistory } from "@/lib/ask-history";
 
 type AskAnswer = {
   title: string;
@@ -92,6 +93,24 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
     const q = text.trim();
     if (!q || isPending) return;
 
+    // История до текущего вопроса — для follow-up («этот аутсайдер», «у какого IBM»).
+    const history: {
+      role: "user" | "assistant";
+      content: string;
+      intent?: string;
+    }[] = [];
+    for (const item of items) {
+      if (item.role === "user") {
+        history.push({ role: "user", content: item.text });
+      } else if (item.role === "assistant") {
+        history.push({
+          role: "assistant",
+          content: compactAnswerForHistory(item.answer),
+          intent: item.answer.intent,
+        });
+      }
+    }
+
     setItems((prev) => [...prev, { role: "user", text: q }]);
     setQuestion("");
 
@@ -100,7 +119,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
         const res = await fetch("/api/ask", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: q }),
+          body: JSON.stringify({ question: q, history }),
         });
         const data = (await res.json()) as {
           answer?: AskAnswer;

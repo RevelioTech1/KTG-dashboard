@@ -1,5 +1,6 @@
 import { ASK_SYSTEM_PROMPT, buildAskContext } from "./ask-context";
 import type { AskAnswer } from "./ask";
+import type { AskHistoryMessage } from "./ask-history";
 
 export type LlmStatus = {
   enabled: boolean;
@@ -28,8 +29,12 @@ export function getLlmStatus(): LlmStatus {
 /**
  * Ответ через OpenAI-compatible Chat Completions.
  * Подходит и для OpenAI, и для совместимых провайдеров (OPENAI_BASE_URL).
+ * history — предыдущие реплики текущей сессии диалога.
  */
-export async function answerWithLlm(question: string): Promise<AskAnswer | null> {
+export async function answerWithLlm(
+  question: string,
+  history: AskHistoryMessage[] = [],
+): Promise<AskAnswer | null> {
   const status = getLlmStatus();
   if (!status.enabled || !status.model) return null;
 
@@ -39,6 +44,34 @@ export async function answerWithLlm(question: string): Promise<AskAnswer | null>
     "",
   );
   const context = buildAskContext();
+
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+    { role: "system", content: ASK_SYSTEM_PROMPT },
+    {
+      role: "user",
+      content:
+        `${context}\n\n---\n\nНиже — продолжение диалога с руководителем. ` +
+        `Учитывай предыдущие реплики: местоимения («этот», «он», «аутсайдер») ` +
+        `относятся к людям/регионам из истории. Не проси повторить вопрос, если ответ есть в истории или контексте данных.`,
+    },
+    {
+      role: "assistant",
+      content:
+        "Контекст данных принял. Буду опираться на него и на историю диалога; цифры не выдумаю.",
+    },
+  ];
+
+  for (const turn of history) {
+    messages.push({
+      role: turn.role,
+      content: turn.content,
+    });
+  }
+
+  messages.push({
+    role: "user",
+    content: question.trim(),
+  });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
@@ -53,13 +86,7 @@ export async function answerWithLlm(question: string): Promise<AskAnswer | null>
       body: JSON.stringify({
         model: status.model,
         temperature: 0.2,
-        messages: [
-          { role: "system", content: ASK_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `${context}\n\n---\n\nВопрос руководителя:\n${question.trim()}`,
-          },
-        ],
+        messages,
       }),
       signal: controller.signal,
     });
@@ -76,7 +103,6 @@ export async function answerWithLlm(question: string): Promise<AskAnswer | null>
     const text = data.choices?.[0]?.message?.content?.trim();
     if (!text) return null;
 
-    // Заголовок — первая строка или усечённый вопрос
     const firstLine = text.split("\n").find((l) => l.trim()) ?? "Ответ";
     const title =
       firstLine.replace(/^#+\s*/, "").slice(0, 80) || "Ответ по данным";
@@ -86,10 +112,10 @@ export async function answerWithLlm(question: string): Promise<AskAnswer | null>
       title: title.length < 60 && !title.includes(".") ? title : "Ответ",
       text,
       suggestions: [
+        "У какого IBM этот сотрудник?",
         "Кого дотянуть до 100 баллов для наибольшего эффекта?",
         "Сравни менеджеров IBM по KPI",
         "Какие регионы требуют внимания?",
-        "Как штрафы влияют на премии?",
       ],
     };
   } catch (error) {

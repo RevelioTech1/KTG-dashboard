@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { warehouseExists } from "@/lib/db";
 import {
+  answerFollowUpFromHistory,
   answerLogicalFallback,
   answerQuestion,
   getAskSuggestions,
 } from "@/lib/ask";
 import { answerWithLlm, getLlmStatus } from "@/lib/ask-llm";
+import { isFollowUpQuestion, parseHistory } from "@/lib/ask-history";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +41,12 @@ export async function POST(request: Request) {
       ? (body as { question: string }).question
       : "";
 
+  const history = parseHistory(
+    typeof body === "object" && body !== null && "history" in body
+      ? (body as { history: unknown }).history
+      : [],
+  );
+
   if (!question.trim()) {
     return NextResponse.json({ error: "Пустой вопрос" }, { status: 400 });
   }
@@ -52,6 +60,31 @@ export async function POST(request: Request) {
 
   try {
     const llmStatus = getLlmStatus();
+    const followUp = history.length > 0 && isFollowUpQuestion(question);
+
+    // Follow-up в сессии: сначала нейросеть с историей, иначе правила по кодам из прошлого ответа.
+    if (followUp) {
+      if (llmStatus.enabled) {
+        const llmAnswer = await answerWithLlm(question, history);
+        if (llmAnswer) {
+          return NextResponse.json({
+            question: question.trim(),
+            answer: { ...llmAnswer, source: "llm" as const },
+            llm: llmStatus,
+          });
+        }
+      }
+
+      const fromHistory = answerFollowUpFromHistory(question, history);
+      if (fromHistory) {
+        return NextResponse.json({
+          question: question.trim(),
+          answer: fromHistory,
+          llm: llmStatus,
+        });
+      }
+    }
+
     const rulesAnswer = answerQuestion(question);
 
     // Узкие вопросы с таблицами — сразу из SQL.
@@ -63,9 +96,9 @@ export async function POST(request: Request) {
       });
     }
 
-    // Свободная формулировка — нейросеть с контекстом хранилища.
+    // Свободная формулировка — нейросеть с контекстом хранилища и историей сессии.
     if (llmStatus.enabled) {
-      const llmAnswer = await answerWithLlm(question);
+      const llmAnswer = await answerWithLlm(question, history);
       if (llmAnswer) {
         return NextResponse.json({
           question: question.trim(),
@@ -75,7 +108,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Нет ключа / сбой LLM — логический вывод по сводке и зоне порога.
     if (rulesAnswer.intent === "unknown") {
       return NextResponse.json({
         question: question.trim(),
