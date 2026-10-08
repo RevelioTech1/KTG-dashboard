@@ -28,6 +28,7 @@ import {
   pluralRu,
 } from "./format";
 import { extractTerritoryCodes, type AskHistoryMessage } from "./ask-history";
+import { matchIbmName } from "./name-match";
 
 export type AskRow = {
   cells: string[];
@@ -101,23 +102,28 @@ function aboutManagers(q: string): boolean {
   return /(менеджер|ibm|команд[аыуе]|руководител)/.test(q);
 }
 
-/** Ищет фамилию IBM в вопросе по списку из хранилища. */
+/** Ищет IBM в вопросе: латиница из источника или кириллица/падежи («Золоторева»). */
 async function findIbmName(q: string): Promise<string | null> {
   const managers = await getIbmPerformance({});
-  for (const m of managers) {
-    const full = m.ibm_name.toLowerCase();
+  const names = managers.map((m) => m.ibm_name);
+
+  // Сначала точное/подстрочное совпадение латиницей
+  const lower = q.toLowerCase();
+  for (const name of names) {
+    const full = name.toLowerCase();
     const parts = full.split(/\s+/);
     const last = parts[parts.length - 1];
     const first = parts[0];
-    if (q.includes(full) || (last.length >= 4 && q.includes(last))) {
-      return m.ibm_name;
+    if (lower.includes(full) || (last.length >= 4 && lower.includes(last))) {
+      return name;
     }
-    // «Петр Артемьев» vs "Petr Artemev" — латиница в источнике, кириллицу не матчим по фамилии
-    if (first.length >= 4 && q.includes(first) && parts.length > 1) {
-      return m.ibm_name;
+    if (first.length >= 4 && lower.includes(first) && parts.length > 1) {
+      return name;
     }
   }
-  return null;
+
+  // Кириллица и падежи → транслит
+  return matchIbmName(q, names);
 }
 
 function aboutEmployees(q: string): boolean {
