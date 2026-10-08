@@ -508,7 +508,7 @@ export function answerLogicalFallback(rawQuestion: string): AskAnswer {
   const headline = getHeadline({});
 
   if (
-    /(^|\s)(кого|кто)\b|дотяг|эффект|выигр|фокус|приоритет|куда смотреть|что делать|рекоменд|совет/.test(
+    /(^|\s)(кого|кто)\b|дотяг|эффект|выигр|фокус|приоритет|куда смотреть|что делать|рекоменд|посовет/.test(
       q,
     )
   ) {

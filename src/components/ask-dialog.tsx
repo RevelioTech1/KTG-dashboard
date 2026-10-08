@@ -152,7 +152,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
         className="flex h-[min(720px,85vh)] w-[calc(100%-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
         showCloseButton
       >
-        <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12 text-left">
+        <DialogHeader className="bg-popover relative z-20 shrink-0 border-b px-5 py-4 pr-12 text-left">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="text-primary size-4" />
             Вопросы по данным
@@ -166,9 +166,9 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
 
         <div
           ref={listRef}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5"
+          className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5"
         >
-          <div className="flex flex-col gap-4 py-4">
+          <div className="flex flex-col gap-4 py-4 pb-6">
             {items.length === 0 ? (
               <div className="space-y-3">
                 <p className="text-muted-foreground text-sm">
@@ -225,7 +225,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
           </div>
         </div>
 
-        <div className="bg-popover shrink-0 border-t px-4 py-3">
+        <div className="bg-popover relative z-20 shrink-0 border-t px-4 py-3 shadow-[0_-8px_16px_-12px_rgba(0,0,0,0.25)]">
           <div className="flex items-end gap-2">
             <Textarea
               ref={inputRef}
@@ -234,7 +234,7 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
               onKeyDown={onKeyDown}
               placeholder="Кого дотянуть для наибольшего эффекта?"
               rows={2}
-              className="min-h-[44px] resize-none"
+              className="bg-background min-h-[44px] resize-none"
               disabled={isPending}
             />
             <Button
