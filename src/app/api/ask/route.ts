@@ -6,7 +6,11 @@ import {
   answerQuestion,
   getAskSuggestions,
 } from "@/lib/ask";
-import { answerWithLlm, getLlmStatus } from "@/lib/ask-llm";
+import {
+  answerWithLlm,
+  getLlmStatus,
+  shouldPreferLlm,
+} from "@/lib/ask-llm";
 import { isFollowUpQuestion, parseHistory } from "@/lib/ask-history";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   return NextResponse.json({
     suggestions: getAskSuggestions(),
-    llm: getLlmStatus(),
+    llm: await getLlmStatus(),
   });
 }
 
@@ -59,7 +63,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const llmStatus = getLlmStatus();
+    const llmStatus = await getLlmStatus();
     const followUp = history.length > 0 && isFollowUpQuestion(question);
 
     // Follow-up в сессии: сначала нейросеть с историей, иначе правила по кодам из прошлого ответа.
@@ -87,7 +91,19 @@ export async function POST(request: Request) {
 
     const rulesAnswer = await answerQuestion(question);
 
-    // Узкие вопросы с таблицами — сразу из SQL.
+    // Уточнения и «мягкие» вопросы — нейросеть с полным контекстом (если ключ есть).
+    if (llmStatus.enabled && shouldPreferLlm(question, rulesAnswer.intent)) {
+      const llmAnswer = await answerWithLlm(question, history);
+      if (llmAnswer) {
+        return NextResponse.json({
+          question: question.trim(),
+          answer: { ...llmAnswer, source: "llm" as const },
+          llm: llmStatus,
+        });
+      }
+    }
+
+    // Узкие вопросы с таблицами — SQL-правила.
     if (rulesAnswer.intent !== "unknown" && rulesAnswer.intent !== "help") {
       return NextResponse.json({
         question: question.trim(),
@@ -96,7 +112,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // Свободная формулировка — нейросеть с контекстом хранилища и историей сессии.
     if (llmStatus.enabled) {
       const llmAnswer = await answerWithLlm(question, history);
       if (llmAnswer) {

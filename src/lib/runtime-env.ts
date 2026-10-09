@@ -20,3 +20,18 @@ export function getRuntimeEnv(name: string): string | undefined {
     return undefined;
   }
 }
+
+/** Асинхронный вариант — надёжнее в Cloudflare Workers / OpenNext. */
+export async function getRuntimeEnvAsync(name: string): Promise<string | undefined> {
+  const sync = getRuntimeEnv(name);
+  if (sync) return sync;
+
+  try {
+    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
+    const ctx = await getCloudflareContext({ async: true });
+    const value = (ctx?.env as Record<string, unknown> | undefined)?.[name];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}

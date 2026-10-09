@@ -199,8 +199,8 @@ export function AskDialog({ trigger }: { trigger?: ReactNode } = {}) {
           </DialogTitle>
           <DialogDescription>
             {llm?.enabled
-              ? `Ответы через модель ${llm.model ?? "LLM"} по сводке из хранилища. Если цифр нет — логический вывод на основе правил премирования.`
-              : "Ответы из хранилища KPI и календаря. Для нейросети задайте OPENAI_API_KEY в .env.local (локально) или через wrangler secret (Workers)."}
+              ? `Нейросеть ${llm.model ?? "LLM"} подключена: свободные вопросы и уточнения идут в модель по сводке из хранилища.`
+              : `Режим правил (нейросеть выкл.). ${llm?.reason ?? "Задайте OPENAI_API_KEY в .env.local или wrangler secret."}`}
           </DialogDescription>
         </DialogHeader>
 

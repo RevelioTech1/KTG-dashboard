@@ -1,7 +1,7 @@
 import { ASK_SYSTEM_PROMPT, buildAskContext } from "./ask-context";
 import type { AskAnswer } from "./ask";
 import type { AskHistoryMessage } from "./ask-history";
-import { getRuntimeEnv } from "./runtime-env";
+import { getRuntimeEnvAsync } from "./runtime-env";
 
 export type LlmStatus = {
   enabled: boolean;
@@ -10,8 +10,8 @@ export type LlmStatus = {
   reason?: string;
 };
 
-export function getLlmStatus(): LlmStatus {
-  const key = getRuntimeEnv("OPENAI_API_KEY");
+export async function getLlmStatus(): Promise<LlmStatus> {
+  const key = await getRuntimeEnvAsync("OPENAI_API_KEY");
   if (!key) {
     return {
       enabled: false,
@@ -21,11 +21,11 @@ export function getLlmStatus(): LlmStatus {
         "Не задан OPENAI_API_KEY (.env.local локально или wrangler secret на Workers)",
     };
   }
-  const baseUrl = getRuntimeEnv("OPENAI_BASE_URL");
+  const baseUrl = await getRuntimeEnvAsync("OPENAI_BASE_URL");
   return {
     enabled: true,
     provider: baseUrl ? "openai-compatible" : "openai",
-    model: getRuntimeEnv("OPENAI_MODEL") || "gpt-4o-mini",
+    model: (await getRuntimeEnvAsync("OPENAI_MODEL")) || "gpt-4o-mini",
   };
 }
 
@@ -37,12 +37,12 @@ export async function answerWithLlm(
   question: string,
   history: AskHistoryMessage[] = [],
 ): Promise<AskAnswer | null> {
-  const status = getLlmStatus();
+  const status = await getLlmStatus();
   if (!status.enabled || !status.model) return null;
 
-  const apiKey = getRuntimeEnv("OPENAI_API_KEY")!;
+  const apiKey = (await getRuntimeEnvAsync("OPENAI_API_KEY"))!;
   const baseUrl = (
-    getRuntimeEnv("OPENAI_BASE_URL") || "https://api.openai.com/v1"
+    (await getRuntimeEnvAsync("OPENAI_BASE_URL")) || "https://api.openai.com/v1"
   ).replace(/\/$/, "");
   const context = await buildAskContext();
 
@@ -113,10 +113,10 @@ export async function answerWithLlm(
       title: title.length < 60 && !title.includes(".") ? title : "Ответ",
       text,
       suggestions: [
+        "Выведи регионы с одним сотрудником",
         "У какого IBM этот сотрудник?",
         "Кого дотянуть до 100 баллов для наибольшего эффекта?",
         "Сравни менеджеров IBM по KPI",
-        "Какие регионы требуют внимания?",
       ],
     };
   } catch (error) {
@@ -125,4 +125,63 @@ export async function answerWithLlm(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/** Интенты с точной SQL-таблицей — нейросеть не перехватываем. */
+const PRECISE_RULE_INTENTS = new Set([
+  "singleton_regions",
+  "top_regions",
+  "bottom_regions",
+  "top_employees",
+  "bottom_employees",
+  "ibm_team",
+  "managers",
+  "cliff",
+  "metrics",
+  "no_bonus",
+  "penalties",
+  "headline",
+]);
+
+/**
+ * Вопросы, где узкие SQL-правила часто ошибаются — лучше отдать нейросети.
+ * Точные списки (регионы с 1 сотрудником и т.п.) оставляем правилам.
+ */
+export function shouldPreferLlm(question: string, rulesIntent: string): boolean {
+  const q = question
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (rulesIntent === "unknown" || rulesIntent === "help") return true;
+  if (PRECISE_RULE_INTENTS.has(rulesIntent)) return false;
+
+  if (
+    /(почему|объясни|как так|что если|рекоменд|совет|имеет смысл|логическ|свободн|расскажи)/.test(
+      q,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /(только|именно|кроме|единствен|ровно|хотя бы|не меньше|не больше|ровно\s*\d)/.test(
+      q,
+    )
+  ) {
+    return true;
+  }
+
+  // Уточнения по численности без точного интента — в модель (в контексте есть singleton-список).
+  if (
+    /регион/.test(q) &&
+    /(^|\s)(1|один|одна|одно|двумя|два|трое|три|\d+)\s*(сотрудник|человек|исполнител|чел)/.test(
+      q,
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }

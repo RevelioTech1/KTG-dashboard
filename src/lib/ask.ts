@@ -54,10 +54,10 @@ const SUGGESTIONS = [
   "Кого дотянуть до 100 баллов для наибольшего эффекта?",
   "У кого из сотрудников лучший KPI?",
   "Кто в аутсайдерах по KPI?",
+  "Выведи регионы с одним сотрудником",
   "Выдай топ-5 регионов по среднему баллу",
   "Сравни менеджеров IBM по KPI",
-  "Какая команда у Petr Artemev?",
-  "Сколько сотрудников без премии?",
+  "Какая команда у Zolotarev Evgeniy?",
   "Как штрафы влияют на премии?",
 ];
 
@@ -96,6 +96,16 @@ function isBottom(q: string): boolean {
 
 function aboutRegions(q: string): boolean {
   return /регион/.test(q);
+}
+
+/** Регионы ровно с одним исполнителем (на дашборде они скрыты: minPeople = 2). */
+function aboutSingletonRegions(q: string): boolean {
+  if (!/регион/.test(q)) return false;
+  return (
+    /(^|\s)(1|один|одна|одно)\s+(сотрудник|человек|исполнител|чел)/.test(q) ||
+    /регион.*(с одним|с 1 |где 1 |где один|только один|единствен)/.test(q) ||
+    /(один|1)\s+сотрудник.*(регион)|регион.*(один|1)\s+сотрудник/.test(q)
+  );
 }
 
 function aboutManagers(q: string): boolean {
@@ -300,6 +310,44 @@ async function answerIbmTeam(ibmName: string): Promise<AskAnswer> {
         formatPercent(r.final_incentive_rate),
       ],
     })),
+  };
+}
+
+async function answerSingletonRegions(): Promise<AskAnswer> {
+  const all = await getRegionPerformance({}, 1);
+  const rows = all
+    .filter((r) => r.people === 1)
+    .sort((a, b) => b.avg_score - a.avg_score);
+
+  if (rows.length === 0) {
+    return {
+      intent: "singleton_regions",
+      title: "Регионы с одним сотрудником",
+      text: "Регионов ровно с одним исполнителем в загруженных данных нет.",
+    };
+  }
+
+  return {
+    intent: "singleton_regions",
+    title: `Регионы с одним сотрудником: ${rows.length}`,
+    text:
+      `В данных ${rows.length} ${pluralRu(rows.length, "регион", "региона", "регионов")}, ` +
+      `где работает ровно один исполнитель. На дашборде в рейтинге регионов они скрыты ` +
+      `(там порог «от 2 сотрудников»), но в источнике они есть.`,
+    columns: ["Регион", "Сотрудников", "Балл", "Ставка"],
+    rows: rows.map((r) => ({
+      cells: [
+        r.region_name,
+        String(r.people),
+        formatScore(r.avg_score, 1),
+        formatPercent(r.avg_final_rate),
+      ],
+    })),
+    suggestions: [
+      "Выдай топ-5 регионов по среднему баллу",
+      "Сравни менеджеров IBM по KPI",
+      "Кто в аутсайдерах по KPI?",
+    ],
   };
 }
 
@@ -724,6 +772,11 @@ export async function answerQuestion(rawQuestion: string): Promise<AskAnswer> {
   // Метрики / POSM / SKU / ошибки
   if (aboutMetrics(q) && !aboutKpi(q) && !aboutEmployees(q) && !aboutRegions(q)) {
     return withRulesSource(await answerMetrics());
+  }
+
+  // Регионы ровно с 1 сотрудником — раньше общего рейтинга регионов
+  if (aboutSingletonRegions(q)) {
+    return withRulesSource(await answerSingletonRegions());
   }
 
   // Регионы

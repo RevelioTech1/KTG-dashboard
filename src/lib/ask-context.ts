@@ -22,6 +22,12 @@ export async function buildAskContext(): Promise<string> {
   const headline = await getHeadline({});
   const managers = await getIbmPerformance({});
   const regions = (await getRegionPerformance({}, 2)).slice(0, 10);
+  const allRegions = await getRegionPerformance({}, 1);
+  const singletonRegions = allRegions.filter((r) => r.people === 1);
+  const regionSizeBuckets = new Map<number, number>();
+  for (const r of allRegions) {
+    regionSizeBuckets.set(r.people, (regionSizeBuckets.get(r.people) ?? 0) + 1);
+  }
   const top = await getTerritoryRanking({}, "top", 8);
   const bottom = await getTerritoryRanking({}, "bottom", 8);
   const cliff = await getCliffCandidates({}, 15);
@@ -83,11 +89,32 @@ export async function buildAskContext(): Promise<string> {
     );
   }
   lines.push("");
-  lines.push("## Топ регионов (от 2 сотрудников)");
+  lines.push("## Топ регионов (от 2 сотрудников — как на дашборде)");
   for (const r of regions.slice(0, 8)) {
     lines.push(
       `- ${r.region_name}: ср.балл ${formatScore(r.avg_score, 1)}, n=${r.people}, ≥100 ${formatPercent(r.share_above_cliff, 0)}`,
     );
+  }
+  lines.push("");
+  lines.push(
+    `## Регионы ровно с 1 сотрудником (${singletonRegions.length} шт.; на дашборде скрыты)`,
+  );
+  if (singletonRegions.length === 0) {
+    lines.push("- пусто");
+  } else {
+    for (const r of singletonRegions.slice(0, 40)) {
+      lines.push(
+        `- ${r.region_name}: балл ${formatScore(r.avg_score, 1)}, ставка ${formatPercent(r.avg_final_rate)}`,
+      );
+    }
+    if (singletonRegions.length > 40) {
+      lines.push(`- … ещё ${singletonRegions.length - 40}`);
+    }
+  }
+  lines.push("");
+  lines.push("## Сколько регионов какого размера");
+  for (const size of [...regionSizeBuckets.keys()].sort((a, b) => a - b)) {
+    lines.push(`- ${size} чел.: ${regionSizeBuckets.get(size)} регион(ов)`);
   }
   lines.push("");
   lines.push("## Топ территорий по баллу");
@@ -164,4 +191,5 @@ export const ASK_SYSTEM_PROMPT = `Ты аналитик управленческ
 - Если точных цифр нет, явно напиши: «В загруженных данных этого нет» и дай логический вывод / гипотезу на основе правил премирования и имеющихся паттернов. Помечай такие части как «логический вывод».
 - Сотрудников называй по коду территории (и региону/должности/IBM), не выдумывай ФИО.
 - Вопросы вроде «кого дотянуть для наибольшего эффекта» обычно про зону быстрого выигрыша у порога 100 баллов — там ставка премии скачком удваивается.
+- Если спрашивают «регионы с 1 сотрудником / одним человеком» — бери блок «Регионы ровно с 1 сотрудником», а не топ регионов от 2 сотрудников.
 - Не говори, что ты языковая модель, если не спрашивают. Не предлагай выдумать данные.`;
